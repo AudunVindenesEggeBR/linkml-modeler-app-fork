@@ -1,0 +1,46 @@
+# Build context excludes for deploy/web/Dockerfile.web (context: repo root).
+#
+# Without this file, `COPY . .` copies whatever happens to be sitting in the
+# working tree -- including node_modules, which is never wanted here: the
+# build stage does its own `pnpm install` fresh inside the container, and
+# copying a host-installed node_modules on top would be both very slow
+# (potentially minutes, especially over a slow bind-mounted filesystem, e.g.
+# a WSL2 /mnt/c/ path) and could clobber the container's own install with
+# host-specific artifacts. Keep this in sync with the spirit of .gitignore,
+# though the two files serve different purposes and don't need to match
+# exactly.
+#
+# .pnpm-store is the same story but easy to miss: running `pnpm install`
+# against this repo from inside a container (e.g. to test/build on a host
+# with no Node/pnpm) can leave a *local* content-addressable store behind
+# at the repo root instead of using pnpm's usual global one, tens of
+# thousands of tiny files -- exactly the worst case for slow bind-mount I/O,
+# and it silently defeats the node_modules exclusion above by re-copying an
+# equivalent amount of data under a different name.
+
+node_modules
+**/node_modules
+.pnpm-store
+.git
+
+# Build outputs -- rebuilt inside the container, never wanted from the host
+dist
+**/dist
+build
+out
+release
+*.tsbuildinfo
+
+# Test artifacts
+coverage
+test-results
+playwright-report
+
+# Local/editor state
+.DS_Store
+*.local
+.env
+.env.*
+.claude
+.agents
+.vitepress

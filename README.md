@@ -100,6 +100,38 @@ pnpm build
 
 - **Web output:** `packages/web/dist/` — serve these static files from any web server.
 
+### Run everything in containers (Podman)
+
+No Node/pnpm install needed for this path — a container build handles it. A Compose stack (nginx + the isomorphic-git CORS proxy) lives under `deploy/web/`; `deploy/web/Dockerfile.web` builds the app itself inside the container. Works with `podman-compose` or plain `docker compose`.
+
+First, check your machine actually has what's needed — this points out exactly what's missing and how to fix it, instead of failing partway through a build:
+
+```bash
+./deploy/web/check-requirements.sh
+```
+
+Example output when everything is in place:
+
+```
+Checking local requirements for deploy/web/ ...
+
+  OK    podman 5.7.0 found.
+  OK    podman info runs cleanly (rootless setup looks complete).
+  OK    podman-compose found (podman-compose version 1.5.0).
+  OK    Port 8080 is free.
+
+All checks passed. You can run:
+  podman-compose -f deploy/web/docker-compose.yml up --build
+```
+
+Then start the stack:
+
+```bash
+podman-compose -f deploy/web/docker-compose.yml up --build
+```
+
+Opens at [http://localhost:8080](http://localhost:8080) (rootless Podman can't bind port 80 without extra host config — override with `WEB_PORT=<port>` if 8080 is taken). See the [Developer Guide](https://adamlabadorf.github.io/linkml-modeler-app/development) for subpath/reverse-proxy deployment and the Docker-only equivalent.
+
 ---
 
 ## Documentation

@@ -1,21 +1,72 @@
-# Serves the pre-built web app via nginx.
+# Multi-stage build: builds the web package inside the container (stage 1)
+# then serves the result via nginx (stage 2). No Node/pnpm required on the
+# host — `podman build` / `podman-compose build` alone is enough.
 #
-# Build args:
-#   BASE_PATH  — URL path prefix the app is served under (default: /).
-#                Must match the VITE_BASE_URL used when building the web package.
-#                Example: /linkml-editor/
+# Build args (stage 1, baked into the JS bundle / index.html):
+#   VITE_BASE_URL       — URL path prefix the app is served under (default: /).
+#                          Must end with "/". Example: /linkml-editor/
+#   VITE_GIT_CORS_PROXY  — URL of the CORS proxy the app talks to.
+#                          Example: /cors-proxy (same-origin, via nginx) or
+#                          https://your-domain.com/linkml-editor/cors-proxy
 #
-# Build the web package first:
-#   VITE_BASE_URL=/linkml-editor/ \
-#   VITE_GIT_CORS_PROXY=https://your-domain.com/linkml-editor/cors-proxy \
-#     pnpm --filter @linkml-editor/web build
+# Build arg (stage 2, written into the nginx config):
+#   BASE_PATH — must match VITE_BASE_URL exactly (default: /).
 #
-# Then run from the repo root:
-#   BASE_PATH=/linkml-editor/ docker compose -f deploy/web/docker-compose.yml up --build
+# Run from the repo root:
+#   docker compose -f deploy/web/docker-compose.yml up --build
+#   podman-compose -f deploy/web/docker-compose.yml up --build
+#
+# The host-build flow documented previously (pnpm build locally, then
+# `docker compose up --build`) still works unchanged if you already have
+# Node/pnpm installed and prefer it — this file no longer requires it, it
+# doesn't remove the option. `packages/web/dist`, if present at build
+# context root, is simply ignored: this Dockerfile always rebuilds inside
+# stage 1.
 
-FROM nginx:alpine
+# ---- Stage 1: build ----
+# node:22-alpine, not node:20-alpine (Node 20 reached EOL 2026-04-30 — see
+# the tracked issue for the repo-wide Node bump; packages/proxy is bumped
+# alongside that work, not here).
+#
+# Fully-qualified docker.io/library/... rather than a bare short name:
+# Podman only resolves short image names via each host's own
+# registries.conf short-name aliases (a security feature against
+# short-name-spoofing), so a bare `nginx:alpine` can fail on a host that
+# has no alias for it even though `node:...` happens to resolve there —
+# confirmed while testing this file. Fully-qualified names build
+# identically everywhere, with Docker included.
+FROM docker.io/library/node:22-alpine AS build
+WORKDIR /repo
+
+# Pin the same pnpm major version the CI workflows install (pnpm/action-setup
+# "version: 10"), via corepack rather than a global npm install.
+RUN corepack enable && corepack prepare pnpm@10 --activate
+
+# Copy just the workspace manifests first so `pnpm install` is cached across
+# builds that only change application source, not dependencies.
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY packages/core/package.json packages/core/package.json
+COPY packages/web/package.json packages/web/package.json
+COPY packages/electron/package.json packages/electron/package.json
+COPY packages/docs/package.json packages/docs/package.json
+COPY packages/proxy/package.json packages/proxy/package.json
+RUN pnpm install --frozen-lockfile
+
+# Now bring in the rest of the source and build. core must build first —
+# web imports its compiled dist (workspace:* resolves to packages/core/dist).
+COPY . .
+RUN pnpm --filter @linkml-editor/core run build
+
+ARG VITE_BASE_URL=/
+ARG VITE_GIT_CORS_PROXY
+ENV VITE_BASE_URL=${VITE_BASE_URL}
+ENV VITE_GIT_CORS_PROXY=${VITE_GIT_CORS_PROXY}
+RUN pnpm --filter @linkml-editor/web build
+
+# ---- Stage 2: serve ----
+FROM docker.io/library/nginx:alpine
 ARG BASE_PATH=/
-COPY packages/web/dist /usr/share/nginx/html
+COPY --from=build /repo/packages/web/dist /usr/share/nginx/html
 COPY deploy/web/nginx.conf /etc/nginx/conf.d/default.conf
 # Substitute __BASE_PATH__ placeholder; use | as delimiter to handle / safely
 RUN sed -i "s|__BASE_PATH__|${BASE_PATH}|g" /etc/nginx/conf.d/default.conf

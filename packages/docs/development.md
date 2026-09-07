@@ -74,51 +74,48 @@ pnpm --filter @linkml-editor/web preview
 
 The `packages/web/dist/` directory is a self-contained static site — deploy it to any web server or CDN.
 
-### Deploying the web build with Docker
+### Deploying the web build with Docker or Podman
 
-A Docker Compose stack (nginx + CORS proxy) is provided under `deploy/web/`.
+A Compose stack (nginx + CORS proxy) is provided under `deploy/web/`. `deploy/web/Dockerfile.web` builds the web package **inside the container** (multi-stage) — no local Node/pnpm install needed, and it works the same whether you use `docker compose` or Podman.
+
+**Podman:** install `podman-compose` first (`sudo apt-get install -y podman-compose` on Debian/Ubuntu, `sudo dnf install -y podman-compose` on Fedora, or `pipx install podman-compose` elsewhere), then run `./deploy/web/check-requirements.sh` — it checks podman is present and new enough, rootless podman is actually usable, a compose tool is installed, and the port you want is free, with a copy-pasteable fix for whichever one fails.
 
 ```bash
-# Build the web package (root path, default)
-VITE_GIT_CORS_PROXY=https://your-domain.com/cors-proxy \
-  pnpm --filter @linkml-editor/web build
+# Optional but recommended before first run:
+./deploy/web/check-requirements.sh
 
-# Start the stack
+# Start the stack (defaults: served at http://localhost:8080/, CORS proxy
+# reachable at /cors-proxy/ on the same origin — nothing else to configure)
+podman-compose -f deploy/web/docker-compose.yml up --build
+# or, with Docker:
 docker compose -f deploy/web/docker-compose.yml up --build
 ```
 
-The app is served on port 80. The CORS proxy is reachable at `/cors-proxy/` on the same origin.
+The default host port is **8080**, not 80 — rootless Podman can't bind port 80 without extra host configuration. Override it with `WEB_PORT=<port>` if 8080 is taken.
+
+If you already have Node/pnpm installed and prefer the old flow, it still works: build with `pnpm --filter @linkml-editor/web build` first, then `up --build` as above — the Dockerfile only rebuilds `packages/web/dist` itself, it doesn't require a pre-built one.
 
 ### Serving behind a reverse proxy at a subpath
 
-When your reverse proxy routes the app under a URL prefix (e.g. `https://your-domain.com/linkml-editor/`), two values must agree: the Vite asset base and the nginx location prefix. Both are controlled at **build time**.
-
-**Step 1 — build the web package with `VITE_BASE_URL` set:**
-
-```bash
-VITE_BASE_URL=/linkml-editor/ \
-VITE_GIT_CORS_PROXY=https://your-domain.com/linkml-editor/cors-proxy \
-  pnpm --filter @linkml-editor/web build
-```
-
-`VITE_BASE_URL` must end with `/`. It controls the `<script>` and `<link>` src attributes emitted in `index.html` so browsers fetch assets from the right path.
-
-**Step 2 — build and start Docker with `BASE_PATH` set to the same value:**
+When your reverse proxy routes the app under a URL prefix (e.g. `https://your-domain.com/linkml-editor/`), three values must agree: the Vite asset base, the nginx location prefix, and the CORS proxy URL the app is built with. All three are passed straight through to the container build as environment variables — set them before `up --build`, nothing needs building on the host first:
 
 ```bash
 BASE_PATH=/linkml-editor/ \
-  docker compose -f deploy/web/docker-compose.yml up --build
+VITE_BASE_URL=/linkml-editor/ \
+VITE_GIT_CORS_PROXY=https://your-domain.com/linkml-editor/cors-proxy \
+  podman-compose -f deploy/web/docker-compose.yml up --build
 ```
 
-`BASE_PATH` is passed as a Docker build arg and written into the nginx config. It must match `VITE_BASE_URL` exactly.
+`VITE_BASE_URL` must end with `/`. It controls the `<script>` and `<link>` src attributes emitted in `index.html` so browsers fetch assets from the right path. `BASE_PATH` must match it exactly — it's written into the nginx config.
 
 **Configuration summary:**
 
-| Variable | Where used | Example |
+| Variable | Where used | Example / default |
 |---|---|---|
-| `VITE_BASE_URL` | `pnpm build` env (baked into `index.html`) | `/linkml-editor/` |
-| `VITE_GIT_CORS_PROXY` | `pnpm build` env (baked into JS bundle) | `https://your-domain.com/linkml-editor/cors-proxy` |
-| `BASE_PATH` | `docker compose` env → Docker build arg → nginx config | `/linkml-editor/` |
+| `VITE_BASE_URL` | Compose build arg → Vite build env (baked into `index.html`) | `/linkml-editor/` (default `/`) |
+| `VITE_GIT_CORS_PROXY` | Compose build arg → Vite build env (baked into JS bundle) | `https://your-domain.com/linkml-editor/cors-proxy` (default `/cors-proxy`, same-origin) |
+| `BASE_PATH` | Compose build arg → nginx config | `/linkml-editor/` (default `/`) |
+| `WEB_PORT` | Compose → host port mapping | `8081` (default `8080`) |
 
 **Reverse proxy config (example nginx upstream):**
 

@@ -38,6 +38,20 @@ pnpm docs:build
 
 A `pre-push` git hook (installed via the root `prepare` script, `.githooks/pre-push`) runs core unit tests and the Playwright E2E suite before every push; expect pushes to take longer than the raw git operation.
 
+### When the host has no Node/pnpm
+
+Some environments this repo is worked in (see `deploy/web/check-requirements.sh` and the Podman deployment docs) have no Node/pnpm installed on the host at all — only a container runtime. To build or run tests there, run the pnpm command inside a throwaway container instead of failing or trying to install Node system-wide:
+
+```bash
+podman run --rm -v "$(pwd)":/repo -w /repo docker.io/library/node:22-alpine sh -c "
+  corepack enable && corepack prepare pnpm@10 --activate &&
+  pnpm install --frozen-lockfile &&
+  pnpm --filter @linkml-editor/core test
+"
+```
+
+This reliably takes several minutes — a cold `pnpm install` alone is commonly 60-90s, before any build or test time on top. **Always pass an explicit long timeout on the tool call running this** (5-10+ minutes); a default ~120s tool timeout will silently move the command to the background partway through `pnpm install`, which is disruptive mid-task and easy to mistake for a hang. This is a tool-invocation setting, not something to fix by adding `timeout N` inside the shell command itself — an in-shell `timeout` only kills the process at N seconds, it does not raise the tool's own execution budget.
+
 ## Development Workflow
 
 **All contributors — human or agent — MUST follow this workflow.** It exists to keep history reviewable and revertible. Do not deviate without first discussing with the project owner.
