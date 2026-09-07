@@ -10,6 +10,7 @@ import React from 'react';
 import { usePlatform } from '../platform/PlatformContext.js';
 import { useAppStore } from '../store/index.js';
 import { parseYaml } from '../io/yaml.js';
+import { normalizeSchemaUrl } from '../io/importResolver.js';
 import { emptyCanvasLayout } from '../model/index.js';
 import { Button } from '../ui/Button.js';
 import { Dialog } from '../ui/Dialog.js';
@@ -101,13 +102,17 @@ export function ImportSchemaDialog({ onClose }: ImportSchemaDialogProps) {
     setError('');
     setLoading(true);
     try {
-      const response = await fetch(urlValue.trim());
+      // github.com blob (web UI) pages don't send CORS headers; the raw
+      // content at raw.githubusercontent.com does, and is what's actually
+      // needed here — see normalizeSchemaUrl.
+      const url = normalizeSchemaUrl(urlValue.trim());
+      const response = await fetch(url);
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
       const content = await response.text();
       const schema = parseYaml(content);
-      const filePath = deriveFilenameFromUrl(urlValue.trim());
+      const filePath = deriveFilenameFromUrl(url);
 
       if (checkDuplicateFilePath(filePath)) {
         setError(`A schema named "${filePath}" is already in the project.`);
@@ -122,7 +127,7 @@ export function ImportSchemaDialog({ onClose }: ImportSchemaDialogProps) {
         isDirty: true,
         canvasLayout: emptyCanvasLayout(),
         isReadOnly: false,
-        sourceUrl: urlValue.trim(),
+        sourceUrl: url,
       };
 
       addSchemaFile(file);
@@ -134,7 +139,12 @@ export function ImportSchemaDialog({ onClose }: ImportSchemaDialogProps) {
       });
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch schema from URL');
+      const isCors = err instanceof Error && err.message === 'Failed to fetch';
+      setError(
+        isCors
+          ? 'Could not reach URL — the server may not allow cross-origin requests (CORS)'
+          : err instanceof Error ? err.message : 'Failed to fetch schema from URL'
+      );
     } finally {
       setLoading(false);
     }

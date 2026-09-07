@@ -4,7 +4,7 @@ import type { PlatformAPI } from '../platform/PlatformContext.js';
 import type { Project, SchemaFile } from '../model/index.js';
 import { emptyCanvasLayout, emptySchema } from '../model/index.js';
 import { parseYaml } from '../io/yaml.js';
-import { resolveImports } from '../io/importResolver.js';
+import { resolveImports, normalizeSchemaUrl } from '../io/importResolver.js';
 import { readEditorManifest, applyManifestToSchemas, MANIFEST_FILENAME, type ViewDefinition, type ViewLayout } from '../io/editorManifest.js';
 
 const SKIP_DIR_NAMES = new Set(['.git', 'node_modules']);
@@ -188,7 +188,12 @@ export async function loadDemoSchemaFromUrl(url: string, name: string): Promise<
  * Throws a user-friendly Error on CORS/network failures, non-schema content,
  * or YAML parse errors.
  */
-export async function openSchemaFromUrl(url: string, platform: PlatformAPI): Promise<Project> {
+export async function openSchemaFromUrl(rawUrl: string, platform: PlatformAPI): Promise<Project> {
+  // github.com blob (web UI) pages don't send CORS headers, so a bare fetch
+  // always fails there even though the exact same content is reachable at
+  // raw.githubusercontent.com, which does. Users overwhelmingly paste the
+  // blob URL since that's what's in the address bar when browsing a repo.
+  const url = normalizeSchemaUrl(rawUrl);
   let content: string;
   try {
     const response = await fetch(url);

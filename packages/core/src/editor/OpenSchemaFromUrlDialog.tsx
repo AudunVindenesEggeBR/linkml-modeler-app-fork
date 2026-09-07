@@ -81,6 +81,8 @@ export function OpenSchemaFromUrlDialog({ onClose }: OpenSchemaFromUrlDialogProp
       <p style={ds.hint}>
         The schema will be fetched and opened as a read/edit project. Relative imports are
         resolved from the URL. Use <strong>Save</strong> to write to a local folder.
+        A GitHub file page URL (<code>github.com/.../blob/...</code>) is converted to its raw
+        content URL automatically.
       </p>
 
       {error && (

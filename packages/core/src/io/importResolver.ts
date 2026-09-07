@@ -106,22 +106,53 @@ export function buildDependencyGraph(schemas: SchemaFile[]): Map<string, SchemaD
 }
 
 /**
+ * Rewrites a GitHub "blob" (web UI) URL to its raw.githubusercontent.com
+ * equivalent. github.com does not send CORS headers on blob pages, so a
+ * bare `fetch()` of one always fails in the browser with an opaque
+ * "Failed to fetch" -- raw.githubusercontent.com does send permissive CORS
+ * headers and serves the same content. Users overwhelmingly copy the blob
+ * URL, since that's what's in the address bar when browsing a repo, so this
+ * runs on every schema URL fetch rather than relying on people to know to
+ * convert it themselves.
+ *
+ * Any other URL (including one that's already raw.githubusercontent.com,
+ * or a non-GitHub host with its own CORS setup) passes through unchanged.
+ */
+export function normalizeSchemaUrl(url: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return url;
+  }
+  if (parsed.hostname !== 'github.com') return url;
+
+  const parts = parsed.pathname.split('/').filter(Boolean);
+  // Expect: [owner, repo, 'blob', ref, ...path]
+  if (parts.length < 5 || parts[2] !== 'blob') return url;
+
+  const [owner, repo, , ref, ...pathParts] = parts;
+  return `https://raw.githubusercontent.com/${owner}/${repo}/${ref}/${pathParts.join('/')}`;
+}
+
+/**
  * Fetches a schema from a remote URL and returns it as a read-only SchemaFile.
  */
 async function loadSchemaFromUrl(url: string): Promise<SchemaFile | null> {
+  const resolvedUrl = normalizeSchemaUrl(url);
   try {
-    const response = await fetch(url);
+    const response = await fetch(resolvedUrl);
     if (!response.ok) return null;
     const content = await response.text();
     const schema = parseYaml(content);
     return {
       id: crypto.randomUUID(),
-      filePath: url,
+      filePath: resolvedUrl,
       schema,
       isDirty: false,
       canvasLayout: emptyCanvasLayout(),
       isReadOnly: true,
-      sourceUrl: url,
+      sourceUrl: resolvedUrl,
     };
   } catch {
     return null;

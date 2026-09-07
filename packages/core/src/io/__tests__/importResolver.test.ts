@@ -8,6 +8,7 @@ import {
   findMissingImport,
   collectReferencedImportedEntities,
   resolveImports,
+  normalizeSchemaUrl,
 } from '../importResolver.js';
 import type { SchemaFile } from '../../model/index.js';
 import {
@@ -88,6 +89,51 @@ describe('isUrlImport', () => {
 
   it('returns false for bare name', () => {
     expect(isUrlImport('common')).toBe(false);
+  });
+});
+
+// ── normalizeSchemaUrl ───────────────────────────────────────────────────────
+
+describe('normalizeSchemaUrl', () => {
+  it('rewrites a github.com blob URL to raw.githubusercontent.com', () => {
+    expect(
+      normalizeSchemaUrl(
+        'https://github.com/brreg/linkml-datamodellering-no/blob/main/src/linkml/oreg/javazonetalk/javazonetalk-schema.yaml'
+      )
+    ).toBe(
+      'https://raw.githubusercontent.com/brreg/linkml-datamodellering-no/main/src/linkml/oreg/javazonetalk/javazonetalk-schema.yaml'
+    );
+  });
+
+  it('handles a blob URL with a commit SHA as the ref', () => {
+    expect(normalizeSchemaUrl('https://github.com/owner/repo/blob/abc123/schema.yaml')).toBe(
+      'https://raw.githubusercontent.com/owner/repo/abc123/schema.yaml'
+    );
+  });
+
+  it('drops query strings and fragments from a blob URL', () => {
+    expect(normalizeSchemaUrl('https://github.com/owner/repo/blob/main/schema.yaml?plain=1#L10-L20')).toBe(
+      'https://raw.githubusercontent.com/owner/repo/main/schema.yaml'
+    );
+  });
+
+  it('leaves an already-raw githubusercontent URL unchanged', () => {
+    const url = 'https://raw.githubusercontent.com/owner/repo/main/schema.yaml';
+    expect(normalizeSchemaUrl(url)).toBe(url);
+  });
+
+  it('leaves a non-GitHub URL unchanged', () => {
+    const url = 'https://example.org/schemas/main.yaml';
+    expect(normalizeSchemaUrl(url)).toBe(url);
+  });
+
+  it('leaves a github.com URL that is not a blob URL unchanged (e.g. a repo homepage)', () => {
+    const url = 'https://github.com/owner/repo';
+    expect(normalizeSchemaUrl(url)).toBe(url);
+  });
+
+  it('returns the input unchanged if it is not a valid URL', () => {
+    expect(normalizeSchemaUrl('not a url')).toBe('not a url');
   });
 });
 
