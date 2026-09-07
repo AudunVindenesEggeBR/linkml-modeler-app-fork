@@ -19,8 +19,9 @@ pnpm format               # Prettier formatting
 # Single-package work
 pnpm --filter @linkml-editor/core test        # Run only core tests
 pnpm --filter @linkml-editor/core test:watch  # Watch mode for core tests
+pnpm test:e2e                                 # Playwright E2E tests (packages/web)
 
-# Electron development (requires two terminals)
+# Electron development (requires two terminals; experimental, not part of v1.0 supported surface)
 # Terminal 1: pnpm dev
 # Terminal 2: pnpm --filter @linkml-editor/electron build && npx electron packages/electron/dist/main.js
 
@@ -32,6 +33,10 @@ pnpm --filter @linkml-editor/electron package:linux    # Linux only
 pnpm docs:dev
 pnpm docs:build
 ```
+
+`pnpm lint` also runs `scripts/check-token-usage.sh`, which enforces CSS design-token usage in `packages/core/src` and `packages/web/src` (zero-tolerance for `fontFamily:'monospace'` literals and 6-char hex color literals — use the `--font-family-mono` / color CSS custom properties instead).
+
+A `pre-push` git hook (installed via the root `prepare` script, `.githooks/pre-push`) runs core unit tests and the Playwright E2E suite before every push; expect pushes to take longer than the raw git operation.
 
 ## Development Workflow
 
@@ -59,6 +64,8 @@ pnpm docs:build
 - Use conventional-commit prefixes: `feat:`, `fix:`, `chore:`, `docs:`, `test:`, `refactor:`.
 - Reference the GitHub issue: `Refs #56` on intermediate commits, `Closes #56` on the final commit (so the issue auto-closes when the PR merges).
 - Write the *why* in the body, not just the *what*.
+- **The agent never runs `git commit` itself.** Stage or leave the working tree as-is, write the full draft commit message, and hand it to the user to review and commit themselves — this applies everywhere in this file that otherwise says to "commit" (e.g. the promotion checklist, a skill's steps).
+- **Do not add a `Co-Authored-By: Claude ...` / `Claude-Session: ...` trailer** to any drafted commit message — this project opts out of that attribution entirely.
 
 ### Pull requests
 
@@ -174,35 +181,46 @@ After merge, `gh release create --notes-file` uses the curated notes as the GitH
 - Merge without green CI.
 - Use `--no-verify`, `--no-gpg-sign`, or other hook-skipping flags unless explicitly asked.
 
+### Specs backlog (`specs/backlog/`, `specs/done/`)
+
+`specs/backlog/` holds proposals and evaluations for internal tooling/process work (e.g. Claude Code rules and skills) that don't warrant a GitHub issue of their own. `specs/done/` holds the same files once acted on.
+
+- When a spec's recommendations are actually implemented (not just proposed), `git mv` the file from `specs/backlog/` to `specs/done/` as part of that same change — don't leave a completed spec sitting in `backlog/`.
+- Commit that move together with the implementation using a compact Conventional Commits message (see "Commits" above for the prefix set) describing what was implemented, not "move spec to done."
+
 ## Architecture
 
 ### Monorepo Layout (4 packages)
 
 - **`packages/core`** — Platform-agnostic shared library. Contains all React components, Zustand state, LinkML model, YAML I/O, validation, and canvas rendering. This is where most development happens.
-- **`packages/web`** — Vite web build harness. Provides `WebPlatform` (File System Access API + isomorphic-git over OPFS) and the app entry point (`main.tsx`).
-- **`packages/electron`** — Electron main process. Provides IPC handlers implementing PlatformAPI via Node.js fs + isomorphic-git. Preload script bridges to renderer.
+- **`packages/web`** — Vite web build harness. Provides the platform adapters (`WebPlatform`, `ElectronPlatform`, `CloudPlatform`) and the app entry point (`main.tsx`). This is the primary supported deployment target.
+- **`packages/electron`** — Electron main process. Provides IPC handlers implementing PlatformAPI via Node.js fs + isomorphic-git. Preload script bridges to renderer. **Experimental** — preserved for community interest, not part of the supported surface (see README).
 - **`packages/docs`** — VitePress documentation site.
 
 ### Platform Abstraction
 
-The `PlatformAPI` interface (`packages/core/src/platform/PlatformContext.ts`) defines file I/O and git operations. Two implementations exist:
-- `WebPlatform` (`packages/web/src/platform/WebPlatform.ts`) — browser APIs + isomorphic-git/lightning-fs
-- `ElectronPlatform` (`packages/web/src/platform/ElectronPlatform.ts`) — thin IPC bridge to electron main process
+The `PlatformAPI` interface (`packages/core/src/platform/PlatformContext.ts`) defines file I/O and git operations. Implementations live in `packages/web/src/platform/`:
+- `WebPlatform.ts` — browser APIs + isomorphic-git/lightning-fs (OPFS)
+- `ElectronPlatform.ts` — thin IPC bridge to the electron main process
+- `CloudPlatform.ts` — wraps a local platform (Web or Electron) to add GitHub sync: every write triggers a debounced auto-commit+push, and it exposes extra methods (`cloneProject`, `createProject`, `listProjects`, etc.) beyond the base `PlatformAPI`. `ProjectRegistry.ts` tracks GitHub-backed projects connected on the machine/browser.
 
-The active platform is provided via React context. All file/git operations go through this abstraction.
+The active platform is provided via React context. All file/git operations go through this abstraction. GitHub auth (`packages/core/src/auth/GitHubAuth.ts`) uses OAuth Device Flow (RFC 8628) with no client secret, storing tokens via the platform's credential storage.
 
 ### State Management
 
-Zustand store (`packages/core/src/store/index.ts`) composed of 6 slices: Project, Canvas, Editor, Git, UI, Validation. Undo/redo via zundo middleware (tracks schema state only, 50-item history).
+Zustand store (`packages/core/src/store/index.ts`) composed of 7 slices: Project, Canvas, Editor, Git, UI, Validation, Views. Undo/redo via zundo middleware (`partialize`d to `activeProject`/`activeSchemaId` only — canvas/UI ephemeral state is excluded, 50-item history).
 
 ### Key Modules in Core
 
 - **`model/`** — TypeScript types mirroring LinkML metamodel (ClassDefinition, SlotDefinition, EnumDefinition, etc.)
 - **`io/yaml.ts`** — YAML round-trip parsing/serialization. Preserves unknown fields via `extras` map.
 - **`io/importResolver.ts`** — Resolves LinkML `imports:` directives, builds dependency graph.
-- **`canvas/`** — ReactFlow canvas: custom ClassNode/EnumNode, ELK-based auto-layout (`autoLayout.ts`), schema-to-graph derivation (`deriveGraph.ts`).
-- **`editor/`** — Properties panel, project panel, validation panel.
+- **`io/manifest.ts` / `io/editorManifest.ts`** — reads/writes the `.linkml-editor.yaml` project manifest (schema paths, persisted layout, GitHub project config). Changes to this format are a breaking (MAJOR) change — see the release rules above.
+- **`canvas/`** — ReactFlow canvas: custom ClassNode/EnumNode, ELK-based auto-layout (`autoLayout.ts`), schema-to-graph derivation (`deriveGraph.ts`), plus alternate Outline/Table views.
+- **`editor/`** — Properties panel, project panel, validation panel, command palette.
 - **`validation/`** — Schema validation producing errors and warnings.
+- **`project/`** — Project loading (`projectLoader.ts`) and recent-projects tracking (`recentProjects.ts`).
+- **`ui/`** — Hand-rolled UI primitives (Button, Dialog, form fields) styled via CSS custom properties in `tokens.css`/`globals.css` — no component/CSS framework is bundled.
 
 ### Electron Build
 
@@ -210,11 +228,12 @@ Electron bundles the web dist as `extraResources` and serves it via a custom `ap
 
 ## Tech Stack
 
-- React 18, TypeScript 5.4, Vite 5, Vitest (jsdom)
-- ReactFlow 11 (canvas), Zustand 4 (state), js-yaml (YAML), elkjs (auto-layout)
-- shadcn/ui (Radix + Tailwind) for UI primitives
-- isomorphic-git + lightning-fs (browser git), keytar (desktop credentials)
-- Electron 30, electron-builder 25
+- React 19, TypeScript 6, Vite 8, Vitest 4 (jsdom), Playwright (E2E, `packages/web`)
+- ReactFlow 11 (canvas), Zustand 5 + zundo (state/undo), js-yaml 5 (YAML), elkjs (auto-layout)
+- Custom CSS-token-based UI primitives (no component/CSS framework)
+- isomorphic-git + @isomorphic-git/lightning-fs (browser git over OPFS)
+- Electron 42, electron-builder 26
+- driver.js — in-app guided tours (`core/src/tours/`)
 
 ## Requirements
 

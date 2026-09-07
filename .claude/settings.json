@@ -1,0 +1,50 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/block-main-pr.sh",
+            "if": "Bash(gh pr create*)",
+            "statusMessage": "Checking PR target branch..."
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/warn-manifest-change.sh",
+            "if": "Bash(git commit*)",
+            "statusMessage": "Checking staged files for manifest changes..."
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/block-protected-branch-ops.sh",
+            "if": "Bash(git push*)",
+            "statusMessage": "Checking push target..."
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/block-protected-branch-ops.sh",
+            "if": "Bash(git branch*)",
+            "statusMessage": "Checking branch target..."
+          }
+        ]
+      }
+    ]
+  }
+}

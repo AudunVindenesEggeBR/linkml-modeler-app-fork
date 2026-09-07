@@ -13,7 +13,10 @@ coverage/
 test-results/
 playwright-report/
 
-# Claude Code local state
-.claude/
+# Claude Code local state (but share project-level skills/hooks/settings via git)
+.claude/*
+!.claude/settings.json
+!.claude/hooks/
+!.claude/skills/
 .agents/
 .vitepress
