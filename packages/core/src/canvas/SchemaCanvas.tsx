@@ -35,7 +35,7 @@ import { ImportSourceOverlay } from './ImportSourceOverlay.js';
 import { Diamond, Hexagon, Plus } from '../ui/icons/index.js';
 import { edgeTypes, EdgeMarkerDefs } from './edges.js';
 import { deriveGraph } from './deriveGraph.js';
-import { runAutoLayout } from './autoLayout.js';
+import { runAutoLayout, LAYERING_STRATEGIES, SPACING_PRESETS } from './autoLayout.js';
 import { useAppStore } from '../store/index.js';
 import { usePlatform } from '../platform/PlatformContext.js';
 import { collectReferencedImportedEntities } from '../io/importResolver.js';
@@ -373,6 +373,13 @@ function SchemaCanvasInner() {
   const nodeDragOverlayRef = useRef<Record<string, { x: number; y: number }>>({});
   const [nodeDragOverlay, setNodeDragOverlay] = useState<Record<string, { x: number; y: number }>>({});
   const layoutRanRef = useRef(false);
+  // Direction/layering-strategy/spacing for manual "Layout" clicks (and,
+  // once changed, immediately re-run automatically -- see the toolbar
+  // <select>s below) -- the automatic layouts (first load, new imported
+  // entities) always use the TB/LONGEST_PATH/normal defaults.
+  const [layoutDirection, setLayoutDirection] = useState<'TB' | 'BT' | 'LR' | 'RL'>('TB');
+  const [layeringStrategy, setLayeringStrategy] = useState<typeof LAYERING_STRATEGIES[number]>('LONGEST_PATH');
+  const [spacingPreset, setSpacingPreset] = useState<keyof typeof SPACING_PRESETS>('normal');
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [highlightPinnedNodeId, setHighlightPinnedNodeId] = useState<string | null>(null);
 
@@ -485,12 +492,12 @@ function SchemaCanvasInner() {
     if (hasLayoutData) {
       void Promise.resolve(activeSchemaFile.canvasLayout).then(setLocalLayout);
     } else {
-      void runAutoLayout(activeSchemaFile.schema, {}, ghostEntities, hiddenEdgeTypes, effectiveRangeEdgesMode).then((layout) => {
+      void runAutoLayout(activeSchemaFile.schema, {}, ghostEntities, hiddenEdgeTypes).then((layout) => {
         setLocalLayout(layout);
         setTimeout(() => fitView({ padding: 0.1, duration: 400 }), 100);
       });
     }
-  }, [activeSchemaFile, ghostEntities, hiddenEdgeTypes, effectiveRangeEdgesMode, fitView]);
+  }, [activeSchemaFile, ghostEntities, hiddenEdgeTypes, fitView]);
 
   useEffect(() => {
     layoutRanRef.current = false;
@@ -516,7 +523,7 @@ function SchemaCanvasInner() {
     if (!hasUnsaved) return;
 
     // Re-run auto-layout to incorporate the new imported nodes
-    runAutoLayout(activeSchemaFile.schema, {}, ghostEntities, hiddenEdgeTypes, effectiveRangeEdgesMode).then((layout) => {
+    runAutoLayout(activeSchemaFile.schema, {}, ghostEntities, hiddenEdgeTypes).then((layout) => {
       // Merge: keep existing user-adjusted positions, add new imported positions
       setLocalLayout((prev) => ({
         nodes: { ...layout.nodes, ...prev.nodes },
@@ -524,7 +531,7 @@ function SchemaCanvasInner() {
       }));
       setTimeout(() => fitView({ padding: 0.1, duration: 400 }), 150);
     });
-  }, [activeSchemaFile, ghostEntities, hiddenEdgeTypes, effectiveRangeEdgesMode, fitView]);
+  }, [activeSchemaFile, ghostEntities, hiddenEdgeTypes, fitView]);
 
   // Zoom to node when a focus request is pending
   useEffect(() => {
@@ -550,9 +557,23 @@ function SchemaCanvasInner() {
     }, 1000);
   }, []);
 
-  const handleAutoLayout = useCallback(async () => {
+  // Takes direction/layeringStrategy/spacingPreset as explicit args, not
+  // read from state, so the toolbar <select>s can trigger a layout run with
+  // the JUST-CHOSEN value in the same event handler -- reading from state
+  // there would use the stale pre-update value, since setState hasn't
+  // flushed yet.
+  const applyAutoLayout = useCallback(async (
+    direction: 'TB' | 'BT' | 'LR' | 'RL',
+    layeringStrategyValue: typeof LAYERING_STRATEGIES[number],
+    spacingPresetValue: keyof typeof SPACING_PRESETS
+  ) => {
     if (!activeSchemaFile) return;
-    const layout = await runAutoLayout(activeSchemaFile.schema, {}, ghostEntities, hiddenEdgeTypes, effectiveRangeEdgesMode);
+    const layout = await runAutoLayout(
+      activeSchemaFile.schema,
+      { direction, layeringStrategy: layeringStrategyValue, ...SPACING_PRESETS[spacingPresetValue] },
+      ghostEntities,
+      hiddenEdgeTypes
+    );
     if (activeViewId) {
       updateViewLayout(activeViewId, { nodes: layout.nodes, viewport: layout.viewport });
     } else if (focusMode?.type === 'subset') {
@@ -562,7 +583,11 @@ function SchemaCanvasInner() {
     }
     setTimeout(() => fitView({ padding: 0.1, duration: 400 }), 100);
     scheduleManifestWrite();
-  }, [activeSchemaFile, ghostEntities, hiddenEdgeTypes, effectiveRangeEdgesMode, fitView, scheduleManifestWrite, activeViewId, views, focusMode, subsetLayouts, updateViewLayout, updateSubsetLayout]);
+  }, [activeSchemaFile, ghostEntities, hiddenEdgeTypes, fitView, scheduleManifestWrite, activeViewId, views, focusMode, subsetLayouts, updateViewLayout, updateSubsetLayout]);
+
+  const handleAutoLayout = useCallback(() => {
+    void applyAutoLayout(layoutDirection, layeringStrategy, spacingPreset);
+  }, [applyAutoLayout, layoutDirection, layeringStrategy, spacingPreset]);
 
   // ── ReactFlow event handlers ──────────────────────────────────────────────
 
@@ -1178,9 +1203,62 @@ function SchemaCanvasInner() {
             </button>
           </>
         )}
-        <button id="lme-canvas-layout" style={styles.toolbarBtn} onClick={handleAutoLayout} title="Auto Layout (Ctrl+Shift+L)">
-          <Hexagon size={13} style={{ marginRight: 4 }} />Layout
-        </button>
+        <div style={styles.layoutControls}>
+          <button id="lme-canvas-layout" style={styles.toolbarBtn} onClick={handleAutoLayout} title="Auto Layout (Ctrl+Shift+L)">
+            <Hexagon size={13} style={{ marginRight: 4 }} />Layout
+          </button>
+          <select
+            id="lme-canvas-layout-direction"
+            style={styles.toolbarSelect}
+            value={layoutDirection}
+            onChange={(e) => {
+              const next = e.target.value as 'TB' | 'BT' | 'LR' | 'RL';
+              setLayoutDirection(next);
+              void applyAutoLayout(next, layeringStrategy, spacingPreset);
+            }}
+            title="Layout direction -- re-runs Layout immediately"
+          >
+            <option value="TB">↓ Top-down</option>
+            <option value="BT">↑ Bottom-up</option>
+            <option value="LR">→ Left-right</option>
+            <option value="RL">← Right-left</option>
+          </select>
+          <select
+            id="lme-canvas-layout-strategy"
+            style={styles.toolbarSelect}
+            value={layeringStrategy}
+            onChange={(e) => {
+              const next = e.target.value as typeof LAYERING_STRATEGIES[number];
+              setLayeringStrategy(next);
+              void applyAutoLayout(layoutDirection, next, spacingPreset);
+            }}
+            title="Layering strategy -- re-runs Layout immediately"
+          >
+            <option value="LONGEST_PATH">Longest path (most stacked)</option>
+            <option value="NETWORK_SIMPLEX">Network simplex (ELK default, compact)</option>
+            <option value="LONGEST_PATH_SOURCE">Longest path (source-biased)</option>
+            <option value="COFFMAN_GRAHAM">Coffman-Graham</option>
+            <option value="INTERACTIVE">Interactive</option>
+            <option value="STRETCH_WIDTH">Stretch width</option>
+            <option value="MIN_WIDTH">Min width</option>
+          </select>
+          <select
+            id="lme-canvas-layout-spacing"
+            style={styles.toolbarSelect}
+            value={spacingPreset}
+            onChange={(e) => {
+              const next = e.target.value as keyof typeof SPACING_PRESETS;
+              setSpacingPreset(next);
+              void applyAutoLayout(layoutDirection, layeringStrategy, next);
+            }}
+            title="Spacing between class boxes -- re-runs Layout immediately"
+          >
+            <option value="compact">Compact spacing</option>
+            <option value="normal">Normal spacing</option>
+            <option value="spacious">Spacious</option>
+            <option value="extraSpacious">Extra spacious</option>
+          </select>
+        </div>
       </div>
 
       {/* Read-only banner */}
@@ -1313,8 +1391,14 @@ const styles: Record<string, React.CSSProperties> = {
     top: 12,
     right: 12,
     display: 'flex',
+    alignItems: 'flex-start',
     gap: 6,
     zIndex: 10,
+  },
+  layoutControls: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
   },
   toolbarBtn: {
     background: 'var(--color-bg-surface)',
@@ -1328,6 +1412,17 @@ const styles: Record<string, React.CSSProperties> = {
     boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
     display: 'flex',
     alignItems: 'center',
+  },
+  toolbarSelect: {
+    background: 'var(--color-bg-surface)',
+    border: '1px solid var(--color-border-default)',
+    color: 'var(--color-fg-secondary)',
+    borderRadius: 6,
+    padding: '5px 6px',
+    fontSize: 12,
+    fontFamily: 'var(--font-family-mono)',
+    cursor: 'pointer',
+    boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
   },
   toolbarSep: {
     width: 1,

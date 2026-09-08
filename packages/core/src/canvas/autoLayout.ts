@@ -10,42 +10,132 @@
  */
 import ELK from 'elkjs/lib/elk.bundled.js';
 import type { ElkNode, ElkExtendedEdge } from 'elkjs/lib/elk-api.js';
-import type { LinkMLSchema, CanvasLayout, EdgeLayout } from '../model/index.js';
+import type { LinkMLSchema, CanvasLayout, EdgeLayout, ClassDefinition, EnumDefinition } from '../model/index.js';
 import type { ImportedEntity } from '../io/importResolver.js';
-import type { RangeEdgesMode } from '../store/slices/uiSlice.js';
 
-// Node dimensions used for layout calculations
-const CLASS_W = 240;
-const CLASS_H = 120;
-const ENUM_W = 200;
-const ENUM_H = 80;
+// Node dimensions used for layout calculations. ClassNode/EnumNode have no
+// fixed height -- they grow with the number of attributes/values rendered
+// (each row ~22-23px, see ClassNode.tsx's slotRow / EnumNode.tsx's valueRow
+// minHeight). Feeding ELK a fixed height regardless of content caused real
+// visual overlap for any class/enum with more than a handful of entries, so
+// height is estimated from actual content below rather than held constant.
+// Width: use each card's CSS `maxWidth` (ClassNode.tsx / EnumNode.tsx), not
+// `minWidth` -- a class/enum with long attribute/value names renders wider
+// than a small fixed guess, up to that cap (text never wraps, see below), so
+// assuming anything less than the cap risks the same overlap bug the height
+// fix addresses: ELK would place a neighbour based on a box smaller than
+// what actually renders. This trades a little unused horizontal space for
+// classes with short names against guaranteeing no width-driven overlap.
+const CLASS_W = 320; // ClassNode.tsx wrapper maxWidth
+const CLASS_H = 120; // floor only -- see estimateClassNodeSize
+const ENUM_W = 280; // EnumNode.tsx wrapper maxWidth
+const ENUM_H = 80; // floor only -- see estimateEnumNodeSize
+
+// Measured from ClassNode.tsx / EnumNode.tsx style objects: header padding
+// '6px 10px' + fontSize 13, body padding '4px 0', each row minHeight 22 + 1px
+// border. Row text is ellipsis-truncated (never wraps), so row height stays
+// constant regardless of content length -- these constants are safe to use
+// as a fixed multiplier rather than needing real DOM measurement.
+const HEADER_H = 34;
+const ISA_ROW_H = 24; // ClassNode's extra is_a row, only present when classDef.isA is set
+const BODY_PADDING = 8;
+const ROW_H = 23;
+const ENUM_VALUE_LIMIT = 12; // EnumNode caps visible rows and adds a "+N more" row beyond this
+
+/**
+ * Estimate a class node's rendered size from its actual attribute count,
+ * rather than assuming a fixed box -- see the module-level comment on
+ * CLASS_H for why a fixed height caused overlapping nodes.
+ */
+export function estimateClassNodeSize(classDef: ClassDefinition): { width: number; height: number } {
+  const attrCount = Object.keys(classDef.attributes).length;
+  const height = HEADER_H + (classDef.isA ? ISA_ROW_H : 0) + BODY_PADDING + attrCount * ROW_H;
+  return { width: CLASS_W, height: Math.max(height, CLASS_H) };
+}
+
+/**
+ * Estimate an enum node's rendered size from its actual permissible-value
+ * count (capped the same way EnumNode itself caps visible rows).
+ */
+export function estimateEnumNodeSize(enumDef: EnumDefinition): { width: number; height: number } {
+  const valueCount = Object.keys(enumDef.permissibleValues).length;
+  const visibleRows = Math.min(valueCount, ENUM_VALUE_LIMIT) + (valueCount > ENUM_VALUE_LIMIT ? 1 : 0);
+  const height = HEADER_H + BODY_PADDING + visibleRows * ROW_H;
+  return { width: ENUM_W, height: Math.max(height, ENUM_H) };
+}
 
 const elk = new ELK();
 
 export interface AutoLayoutOptions {
   /** ELK algorithm — defaults to layered (Sugiyama) */
   algorithm?: string;
-  /** Direction: TB | BT | LR | RL */
+  /**
+   * Direction: TB | BT | LR | RL (conventional flowchart-library naming,
+   * e.g. Mermaid/dagre). Translated to ELK's own `elk.direction` enum
+   * (DOWN|UP|RIGHT|LEFT) via DIRECTION_TO_ELK below -- ELK does not
+   * recognize "TB" etc. itself and silently ignores an unrecognized value
+   * rather than erroring, which is why passing these strings straight
+   * through here previously had no effect at all.
+   */
   direction?: 'TB' | 'BT' | 'LR' | 'RL';
+  /**
+   * ELK's `elk.layered.layering.strategy` value, passed through verbatim
+   * (unlike `direction`, these ARE ELK's own real enum names already).
+   * Limited to LAYERING_STRATEGIES below -- ELK's full enum also includes
+   * BF_MODEL_ORDER/DF_MODEL_ORDER, which were verified (empirically, by
+   * actually running elk.layout() with each candidate value against a test
+   * graph -- see the retired debug test this was checked with) to throw
+   * ("Cannot read properties of null") on a plain graph with no model-order
+   * metadata, which this app never supplies. Do not add them to the picker
+   * without also supplying whatever model-order data they need.
+   */
+  layeringStrategy?: typeof LAYERING_STRATEGIES[number];
   /** Spacing between nodes */
   nodeNodeSpacing?: number;
   /** Spacing between hierarchy levels */
   layerSpacing?: number;
 }
 
+const DIRECTION_TO_ELK: Record<NonNullable<AutoLayoutOptions['direction']>, string> = {
+  TB: 'DOWN',
+  BT: 'UP',
+  LR: 'RIGHT',
+  RL: 'LEFT',
+};
+
+export const LAYERING_STRATEGIES = [
+  'NETWORK_SIMPLEX',
+  'LONGEST_PATH',
+  'LONGEST_PATH_SOURCE',
+  'COFFMAN_GRAHAM',
+  'INTERACTIVE',
+  'STRETCH_WIDTH',
+  'MIN_WIDTH',
+] as const;
+
+// Named nodeNodeSpacing/layerSpacing pairs for the toolbar's spacing picker.
+// "normal" is the pair widened from the original 40/80 (see below) once tight
+// spacing was found to leave orthogonal edges no room to route around node
+// boundaries, making them hard to trace even once overlap itself was fixed.
+export const SPACING_PRESETS = {
+  compact: { nodeNodeSpacing: 40, layerSpacing: 80 },
+  normal: { nodeNodeSpacing: 70, layerSpacing: 140 },
+  spacious: { nodeNodeSpacing: 110, layerSpacing: 220 },
+  extraSpacious: { nodeNodeSpacing: 160, layerSpacing: 320 },
+} as const;
+
 const DEFAULT_OPTIONS: Required<AutoLayoutOptions> = {
   algorithm: 'layered',
   direction: 'TB',
-  nodeNodeSpacing: 40,
-  layerSpacing: 80,
+  layeringStrategy: 'LONGEST_PATH',
+  ...SPACING_PRESETS.normal,
 };
 
 export async function runAutoLayout(
   schema: LinkMLSchema,
   opts: AutoLayoutOptions = {},
   ghostEntities: ImportedEntity[] = [],
-  hiddenEdgeTypes: ReadonlySet<string> = new Set(),
-  rangeEdgesMode: RangeEdgesMode = 'show'
+  hiddenEdgeTypes: ReadonlySet<string> = new Set()
 ): Promise<CanvasLayout> {
   const options = { ...DEFAULT_OPTIONS, ...opts };
 
@@ -54,20 +144,18 @@ export async function runAutoLayout(
   const edgeSeen = new Set<string>();
 
   // ── Add class nodes ────────────────────────────────────────────────────────
-  for (const className of Object.keys(schema.classes)) {
+  for (const [className, classDef] of Object.entries(schema.classes)) {
     elkNodes.push({
       id: className,
-      width: CLASS_W,
-      height: CLASS_H,
+      ...estimateClassNodeSize(classDef),
     });
   }
 
   // ── Add enum nodes ─────────────────────────────────────────────────────────
-  for (const enumName of Object.keys(schema.enums)) {
+  for (const [enumName, enumDef] of Object.entries(schema.enums)) {
     elkNodes.push({
       id: enumName,
-      width: ENUM_W,
-      height: ENUM_H,
+      ...estimateEnumNodeSize(enumDef),
     });
   }
 
@@ -81,11 +169,10 @@ export async function runAutoLayout(
   for (const entity of ghostEntities) {
     if (localIds.has(entity.name)) continue; // skip if local definition exists
     allImportedIds.add(entity.name);
-    elkNodes.push({
-      id: entity.name,
-      width: entity.type === 'class' ? CLASS_W : ENUM_W,
-      height: entity.type === 'class' ? CLASS_H : ENUM_H,
-    });
+    const size = entity.type === 'class'
+      ? estimateClassNodeSize(entity.schema.classes[entity.name])
+      : estimateEnumNodeSize(entity.schema.enums[entity.name]);
+    elkNodes.push({ id: entity.name, ...size });
   }
 
   // All known IDs for edge validation
@@ -116,8 +203,12 @@ export async function runAutoLayout(
       }
     }
 
-    // range edges — skip when mode is inline/auto (chips replace edges)
-    if (!hiddenEdgeTypes.has('range') && rangeEdgesMode === 'show') {
+    // range edges always feed the layout, regardless of rangeEdgesMode --
+    // that setting only controls whether they're drawn as edges vs. inline
+    // chips on the canvas (see deriveGraph.ts). Without them in the layout
+    // graph, classes connected only by range (not is_a/mixin) get no
+    // hierarchical placement at all, which reads as scattered/undirected.
+    if (!hiddenEdgeTypes.has('range')) {
       for (const [slotName, slot] of Object.entries(classDef.attributes)) {
         if (!slot.range || !allIds.has(slot.range)) continue;
         addEdge(
@@ -136,10 +227,39 @@ export async function runAutoLayout(
     id: 'root',
     layoutOptions: {
       'elk.algorithm': options.algorithm,
-      'elk.direction': options.direction,
+      'elk.direction': DIRECTION_TO_ELK[options.direction],
       'elk.spacing.nodeNode': String(options.nodeNodeSpacing),
       'elk.layered.spacing.nodeNodeBetweenLayers': String(options.layerSpacing),
       'elk.edgeRouting': 'ORTHOGONAL',
+      // Crossing minimization is one of the three phases the layered
+      // algorithm runs (layering, crossing minimization, node placement) --
+      // it was already active at ELK's own default settings, just not
+      // tuned. LAYER_SWEEP is ELK's default heuristic; explicit here so the
+      // intent is documented rather than implicit. Crossing minimization is
+      // NP-hard in general, so this reduces crossings, it doesn't guarantee
+      // a crossing-free result for a densely cross-linked schema (e.g. many
+      // range edges pointing across unrelated branches of the is_a tree).
+      'elk.layered.crossingMinimization.strategy': 'LAYER_SWEEP',
+      // Raise thoroughness (default 7) so the heuristic spends more effort
+      // searching for a lower-crossing layer ordering. Cost is more compute
+      // per layout run, acceptable at the scale of a LinkML schema's class
+      // count; revisit if Layout becomes noticeably slow on very large
+      // schemas.
+      'elk.layered.thoroughness': '30',
+      // LONGEST_PATH (the default here) pushes each node to the deepest
+      // layer its ancestors allow, maximizing vertical stacking -- ELK's own
+      // default (NETWORK_SIMPLEX) instead favors a compact/wide result,
+      // which reads as flatter and less clearly top-down. User-selectable
+      // (see LAYERING_STRATEGIES) via SchemaCanvas.tsx's toolbar.
+      'elk.layered.layering.strategy': options.layeringStrategy,
+      // Extra breathing room around edges specifically (distinct from
+      // node-node spacing above) -- without this, orthogonal edges route
+      // right up against node boundaries and each other, making them hard
+      // to trace visually even when nodes themselves don't overlap.
+      'elk.spacing.edgeNode': '20',
+      'elk.layered.spacing.edgeNodeBetweenLayers': '20',
+      'elk.spacing.edgeEdge': '15',
+      'elk.layered.spacing.edgeEdgeBetweenLayers': '15',
     },
     children: elkNodes,
     edges: elkEdges,
