@@ -128,6 +128,31 @@ export const LAYERING_STRATEGIES = [
   'MIN_WIDTH',
 ] as const;
 
+/**
+ * The subset of LAYERING_STRATEGIES actually offered in the UI picker.
+ * Verified empirically (diamond test graph, throwaway debug test) that the
+ * 7 strategies above collapse into just 3 distinct outcomes:
+ *   {NETWORK_SIMPLEX, COFFMAN_GRAHAM}          -- y=292 for the diamond's
+ *   {LONGEST_PATH, STRETCH_WIDTH, MIN_WIDTH}   -- y=432   shorter branch
+ *   {LONGEST_PATH_SOURCE, INTERACTIVE}         -- y=152
+ * A user found it confusing that differently-named options (INTERACTIVE,
+ * NETWORK_SIMPLEX among them) produced pixel-identical or near-identical
+ * layouts on their schema. The user explicitly asked to remove only
+ * NETWORK_SIMPLEX and INTERACTIVE -- not the further reduction to 2 options
+ * that was separately proposed (and briefly, mistakenly implemented before
+ * being reverted -- see specs/backlog/canvas-layout-topdown.md, "Runde 9c").
+ * COFFMAN_GRAHAM/STRETCH_WIDTH/MIN_WIDTH stay in the picker even though they
+ * duplicate another option's cluster, since the user didn't ask for those
+ * to be removed.
+ */
+export const LAYERING_STRATEGY_UI_OPTIONS = [
+  'LONGEST_PATH',
+  'LONGEST_PATH_SOURCE',
+  'COFFMAN_GRAHAM',
+  'STRETCH_WIDTH',
+  'MIN_WIDTH',
+] as const;
+
 export const EDGE_ROUTINGS = ['ORTHOGONAL', 'POLYLINE', 'SPLINES'] as const;
 
 export const NODE_PLACEMENT_STRATEGIES = [

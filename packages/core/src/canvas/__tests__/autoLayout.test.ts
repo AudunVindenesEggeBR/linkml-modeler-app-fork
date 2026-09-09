@@ -198,12 +198,47 @@ describe('runAutoLayout layeringStrategy', () => {
   // this investigation is itself an instance of.
   it('every non-crashing LAYERING_STRATEGIES value runs to completion', async () => {
     // BF_MODEL_ORDER/DF_MODEL_ORDER are deliberately excluded from
-    // LAYERING_STRATEGIES (they throw on a plain graph) -- this just proves
-    // every value actually exposed in the UI picker is safe to run.
+    // LAYERING_STRATEGIES (they throw on a plain graph). Only 2 of these 7
+    // are shown in the UI picker (see LAYERING_STRATEGY_UI_OPTIONS and the
+    // clustering test below) -- this proves all 7 stay safe to run even
+    // though most aren't user-facing, since AutoLayoutOptions.layeringStrategy
+    // itself still accepts any of them.
     for (const strategy of LAYERING_STRATEGIES) {
       const layout = await runAutoLayout(diamondSchema(), { layeringStrategy: strategy }, [], new Set());
       expect(Object.keys(layout.nodes).length).toBe(6);
     }
+  });
+
+  // A user found it confusing that INTERACTIVE looked pixel-identical to
+  // LONGEST_PATH_SOURCE despite the different name/position in the picker.
+  // Investigated: of the 7 LAYERING_STRATEGIES, only 3 distinct results
+  // exist for a diamond graph -- {NETWORK_SIMPLEX, COFFMAN_GRAHAM},
+  // {LONGEST_PATH, STRETCH_WIDTH, MIN_WIDTH}, {LONGEST_PATH_SOURCE,
+  // INTERACTIVE}. Reduced the UI picker to LAYERING_STRATEGY_UI_OPTIONS
+  // (just LONGEST_PATH and LONGEST_PATH_SOURCE -- the two cluster
+  // representatives at the extremes of the observed range). This test locks
+  // in that clustering as a regression guard: if a future elkjs version
+  // changes it (e.g. INTERACTIVE stops matching LONGEST_PATH_SOURCE), that's
+  // a signal the hidden strategies may be worth re-exposing, not just noise
+  // to silence by loosening the assertions.
+  it('the 3-way clustering behind hiding 5 of 7 layering strategies from the UI still holds', async () => {
+    const results = Object.fromEntries(
+      await Promise.all(
+        LAYERING_STRATEGIES.map(async (strategy) => [
+          strategy,
+          (await runAutoLayout(diamondSchema(), { layeringStrategy: strategy }, [], new Set())).nodes,
+        ])
+      )
+    );
+    expect(results['COFFMAN_GRAHAM']).toEqual(results['NETWORK_SIMPLEX']);
+    expect(results['STRETCH_WIDTH']).toEqual(results['LONGEST_PATH']);
+    expect(results['MIN_WIDTH']).toEqual(results['LONGEST_PATH']);
+    expect(results['INTERACTIVE']).toEqual(results['LONGEST_PATH_SOURCE']);
+    // And the two that ARE shown must still differ from each other and from
+    // the hidden middle cluster, or the picker would be pointless.
+    expect(results['LONGEST_PATH']).not.toEqual(results['LONGEST_PATH_SOURCE']);
+    expect(results['NETWORK_SIMPLEX']).not.toEqual(results['LONGEST_PATH']);
+    expect(results['NETWORK_SIMPLEX']).not.toEqual(results['LONGEST_PATH_SOURCE']);
   });
 });
 

@@ -35,7 +35,7 @@ import { ImportSourceOverlay } from './ImportSourceOverlay.js';
 import { Diamond, Hexagon, Plus } from '../ui/icons/index.js';
 import { edgeTypes, EdgeMarkerDefs } from './edges.js';
 import { deriveGraph } from './deriveGraph.js';
-import { runAutoLayout, LAYERING_STRATEGIES, EDGE_ROUTINGS, NODE_PLACEMENT_STRATEGIES, SPACING_PRESETS } from './autoLayout.js';
+import { runAutoLayout, LAYERING_STRATEGY_UI_OPTIONS, EDGE_ROUTINGS, NODE_PLACEMENT_STRATEGIES, SPACING_PRESETS } from './autoLayout.js';
 import { useAppStore } from '../store/index.js';
 import { usePlatform } from '../platform/PlatformContext.js';
 import { collectReferencedImportedEntities } from '../io/importResolver.js';
@@ -378,7 +378,7 @@ function SchemaCanvasInner() {
   // <select>s below) -- the automatic layouts (first load, new imported
   // entities) always use the TB/LONGEST_PATH/normal defaults.
   const [layoutDirection, setLayoutDirection] = useState<'TB' | 'BT' | 'LR' | 'RL'>('TB');
-  const [layeringStrategy, setLayeringStrategy] = useState<typeof LAYERING_STRATEGIES[number]>('LONGEST_PATH');
+  const [layeringStrategy, setLayeringStrategy] = useState<typeof LAYERING_STRATEGY_UI_OPTIONS[number]>('LONGEST_PATH');
   const [edgeRouting, setEdgeRouting] = useState<typeof EDGE_ROUTINGS[number]>('ORTHOGONAL');
   const [nodePlacementStrategy, setNodePlacementStrategy] = useState<typeof NODE_PLACEMENT_STRATEGIES[number]>('BRANDES_KOEPF');
   const [spacingPreset, setSpacingPreset] = useState<keyof typeof SPACING_PRESETS>('normal');
@@ -566,7 +566,7 @@ function SchemaCanvasInner() {
   // flushed yet.
   const applyAutoLayout = useCallback(async (
     direction: 'TB' | 'BT' | 'LR' | 'RL',
-    layeringStrategyValue: typeof LAYERING_STRATEGIES[number],
+    layeringStrategyValue: typeof LAYERING_STRATEGY_UI_OPTIONS[number],
     edgeRoutingValue: typeof EDGE_ROUTINGS[number],
     nodePlacementStrategyValue: typeof NODE_PLACEMENT_STRATEGIES[number],
     spacingPresetValue: keyof typeof SPACING_PRESETS
@@ -1238,17 +1238,23 @@ function SchemaCanvasInner() {
             style={styles.toolbarSelect}
             value={layeringStrategy}
             onChange={(e) => {
-              const next = e.target.value as typeof LAYERING_STRATEGIES[number];
+              const next = e.target.value as typeof LAYERING_STRATEGY_UI_OPTIONS[number];
               setLayeringStrategy(next);
               void applyAutoLayout(layoutDirection, next, edgeRouting, nodePlacementStrategy, spacingPreset);
             }}
             title="Layering strategy -- re-runs Layout immediately"
           >
-            <option value="LONGEST_PATH">Longest path (most stacked)</option>
-            <option value="NETWORK_SIMPLEX">Network simplex (ELK default, compact)</option>
-            <option value="LONGEST_PATH_SOURCE">Longest path (source-biased)</option>
+            {/*
+              INTERACTIVE and NETWORK_SIMPLEX were removed at the user's
+              explicit request (they clustered with other options empirically
+              -- see LAYERING_STRATEGY_UI_OPTIONS in autoLayout.ts). The
+              remaining 5 are shown as-is, including known-duplicate
+              clusters (COFFMAN_GRAHAM/STRETCH_WIDTH/MIN_WIDTH), since the
+              user did not ask for those to be removed too.
+            */}
+            <option value="LONGEST_PATH">Longest path</option>
+            <option value="LONGEST_PATH_SOURCE">Longest path source</option>
             <option value="COFFMAN_GRAHAM">Coffman-Graham</option>
-            <option value="INTERACTIVE">Interactive</option>
             <option value="STRETCH_WIDTH">Stretch width</option>
             <option value="MIN_WIDTH">Min width</option>
           </select>
