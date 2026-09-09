@@ -1,7 +1,7 @@
 # Spec: Layout-knappen — klassar overlappar kvarandre (hovudbug), pluss meir konsekvent top-down-retning
 
-Status: **Alt over implementert og verifisert. Runde 7 undersøkte kvifor tre layeringstrategiar ser identiske ut på brukaren sitt ekte skjema — stadfesta ikkje-buggen empirisk, men mi fyrste teoretiske forklaring viste seg ufullstendig då ho faktisk vart testa.** Sjå "Implementasjonsstatus" nedst.
-Dato: 2026-09-08 (runde 7 — brukaren observerte at "Longest path (source-biased)", "Longest path (most stacked)" og "Network simplex" gir nøyaktig same layout på skjemaet sitt, og bad om ei forklaring pluss testar som beviser at strategiane FAKTISK gir ulikt resultat generelt)
+Status: **Alt over implementert og verifisert. Runde 8 la til kantruting- og nodeplasserings-veljarar.** Sjå "Implementasjonsstatus" nedst.
+Dato: 2026-09-08 (runde 8 — brukaren spurde om det finst fleire ELK-flag verdt å eksponere; svarte med kantruting og nodeplassering som dei to mest verdifulle, brukaren svarte "ja" til å implementere direkte)
 Ønske (opphavleg): "Layout"-knappen skal stable klassane top-down i ein mest mogleg retta graf.
 Ønske (presisert, runde 1): brukaren rapporterte at klassane **delvis legg seg over kvarandre** når Layout vert trykt, noko som gjer resultatet ubrukeleg — og spurde om det finst ein test for canvas-layout.
 Ønske (presisert, runde 2, etter runde 1-fiksen): overlapp er borte bortsett frå éin ekstra brei "container"-klasse, og resultatet er framleis uleseleg fordi range-/is_a-kantar krysser kvarandre på kryss og tvers — kan vi kalkulere for minst mogleg kryssande strekar?
@@ -177,10 +177,20 @@ Lagt til: ny `LAYERING_STRATEGIES`-konstant og `AutoLayoutOptions.layeringStrate
 
 **Testfila (`autoLayout.test.ts`) inneheld no:** dei to diamant-testane (LONGEST_PATH vs NETWORK_SIMPLEX, LONGEST_PATH_SOURCE vs begge), ein "alle 7 strategiar køyrer utan krasj"-test, og ein utfyllande kommentar (ikkje ein test-påstand) som dokumenterer heile denne undersøkinga og kvifor to tidlegare forsøk på "bevis for full semje ved ikkje-diamant"-testar vart fjerna att. 18 testar totalt, alle grøne. Full typecheck og ESLint reine.
 
+### Runde 8 — kantruting- og nodeplasserings-veljarar
+
+Brukaren spurde om det finst fleire ELK-flag verdt å eksponere. Svarte med to kandidatar (kantruting og nodeplassering innanfor eit lag) som dei mest verdifulle, nemnde òg `elk.separateConnectedComponents`/`elk.padding` som mindre opplagde alternativ (ikkje implementerte). Brukaren svara "ja" til direkte implementering.
+
+**Empirisk verifisert FØR implementering** (same praksis som layeringstrategiane i runde 5): testa alle 3 `elk.edgeRouting`-verdiar (`ORTHOGONAL`, `POLYLINE`, `SPLINES`) og alle 4 `elk.layered.nodePlacement.strategy`-verdiar (`BRANDES_KOEPF`, `LINEAR_SEGMENTS`, `NETWORK_SIMPLEX`, `SIMPLE`) direkte mot rå elkjs. **Ingen krasja** (i motsetnad til layeringstrategi-runda, der 2 av 9 krasja) — alle 7 er trygge å eksponere. Alle er òg stadfesta reelt ulike frå kvarandre (kantruting: talet på bend-punkt per kant varierte tydeleg — ORTHOGONAL/POLYLINE/SPLINES ga høvesvis 2/1/8 bend-punkt for same kant; nodeplassering: x-koordinatar varierte, om enn NETWORK_SIMPLEX-varianten var subtil for testgrafen).
+
+**Lagt til:** `EDGE_ROUTINGS`- og `NODE_PLACEMENT_STRATEGIES`-konstantar i `autoLayout.ts`, tilsvarande `AutoLayoutOptions`-felt, standardverdiar uendra frå før (`ORTHOGONAL`/`BRANDES_KOEPF`, som var hardkoda implisitt tidlegare). To nye `<select>`-element lagt til i same layout-kontroll-kolonne, same auto-køyr-ved-endring-mønster, `applyAutoLayout`/`handleAutoLayout` utvida til å ta imot alle 5 parameter no (retning, layeringstrategi, kantruting, nodeplassering, avstand).
+
+**Testa:** 4 nye testar — kantruting-forskjell stadfesta via faktisk telling av bend-punkt i det returnerte layoutet (ikkje berre "køyrer utan feil"), nodeplasserings-forskjell stadfesta via ulik node-posisjon, pluss to "alle verdiar køyrer utan krasj"-testar. 22 testar totalt i fila, alle grøne. Full typecheck og ESLint reine (0 feil, same to pre-eksisterande åtvaringar).
+
 ## Ope spørsmål til brukar
 
-- **Er det framleis viktig å forstå PRESIST kvifor skjemaet ditt gir identisk resultat for dei tre strategiane, eller held den generelle forklaringa (dei er venta å vere identiske for grafar utan reell tvetydigheit, sjølv om eg ikkje kunne spore opp nøyaktig kva som avgjer det for akkurat ditt skjema)?**
-- Fungerer avstandsveljaren, og sit dei tre veljarane i kolonne under Layout-knappen slik du såg for deg?
+- **Fungerer dei to nye veljarane (kantruting, nodeplassering) som venta?**
+- Er det framleis viktig å forstå PRESIST kvifor skjemaet ditt gir identisk resultat for dei tre layeringstrategiane (runde 7), eller held den generelle forklaringa?
 - Er `spacious`/`extraSpacious`-verdiane (110/220 og 160/320) gode nivå, eller bør presetta justerast?
-- Kva skjema/klasse(r) merka du det opphavlege overlappet på — kor mange attributt hadde den/dei klassane omtrent? (Mest for etterpåklokskap/kalibrering no, sidan alle kjende overlapp-kjelder skal vere retta.)
+- Ønskjer du `elk.separateConnectedComponents`/`elk.padding` (nemnt, ikkje implementerte i runde 8) som neste veljarar, eller er dei fem noverande nok?
 - Er samanslegne (`collapsed`) klassar noko du bruker mykje? Viss ja, er det verdt å prioritere collapsed-state-utviding (nemnt under Prioritet 1) — for no estimerer koden alltid for utvida/verste tilfelle.

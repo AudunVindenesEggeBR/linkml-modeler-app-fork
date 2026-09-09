@@ -35,7 +35,7 @@ import { ImportSourceOverlay } from './ImportSourceOverlay.js';
 import { Diamond, Hexagon, Plus } from '../ui/icons/index.js';
 import { edgeTypes, EdgeMarkerDefs } from './edges.js';
 import { deriveGraph } from './deriveGraph.js';
-import { runAutoLayout, LAYERING_STRATEGIES, SPACING_PRESETS } from './autoLayout.js';
+import { runAutoLayout, LAYERING_STRATEGIES, EDGE_ROUTINGS, NODE_PLACEMENT_STRATEGIES, SPACING_PRESETS } from './autoLayout.js';
 import { useAppStore } from '../store/index.js';
 import { usePlatform } from '../platform/PlatformContext.js';
 import { collectReferencedImportedEntities } from '../io/importResolver.js';
@@ -379,6 +379,8 @@ function SchemaCanvasInner() {
   // entities) always use the TB/LONGEST_PATH/normal defaults.
   const [layoutDirection, setLayoutDirection] = useState<'TB' | 'BT' | 'LR' | 'RL'>('TB');
   const [layeringStrategy, setLayeringStrategy] = useState<typeof LAYERING_STRATEGIES[number]>('LONGEST_PATH');
+  const [edgeRouting, setEdgeRouting] = useState<typeof EDGE_ROUTINGS[number]>('ORTHOGONAL');
+  const [nodePlacementStrategy, setNodePlacementStrategy] = useState<typeof NODE_PLACEMENT_STRATEGIES[number]>('BRANDES_KOEPF');
   const [spacingPreset, setSpacingPreset] = useState<keyof typeof SPACING_PRESETS>('normal');
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [highlightPinnedNodeId, setHighlightPinnedNodeId] = useState<string | null>(null);
@@ -565,12 +567,20 @@ function SchemaCanvasInner() {
   const applyAutoLayout = useCallback(async (
     direction: 'TB' | 'BT' | 'LR' | 'RL',
     layeringStrategyValue: typeof LAYERING_STRATEGIES[number],
+    edgeRoutingValue: typeof EDGE_ROUTINGS[number],
+    nodePlacementStrategyValue: typeof NODE_PLACEMENT_STRATEGIES[number],
     spacingPresetValue: keyof typeof SPACING_PRESETS
   ) => {
     if (!activeSchemaFile) return;
     const layout = await runAutoLayout(
       activeSchemaFile.schema,
-      { direction, layeringStrategy: layeringStrategyValue, ...SPACING_PRESETS[spacingPresetValue] },
+      {
+        direction,
+        layeringStrategy: layeringStrategyValue,
+        edgeRouting: edgeRoutingValue,
+        nodePlacementStrategy: nodePlacementStrategyValue,
+        ...SPACING_PRESETS[spacingPresetValue],
+      },
       ghostEntities,
       hiddenEdgeTypes
     );
@@ -586,8 +596,8 @@ function SchemaCanvasInner() {
   }, [activeSchemaFile, ghostEntities, hiddenEdgeTypes, fitView, scheduleManifestWrite, activeViewId, views, focusMode, subsetLayouts, updateViewLayout, updateSubsetLayout]);
 
   const handleAutoLayout = useCallback(() => {
-    void applyAutoLayout(layoutDirection, layeringStrategy, spacingPreset);
-  }, [applyAutoLayout, layoutDirection, layeringStrategy, spacingPreset]);
+    void applyAutoLayout(layoutDirection, layeringStrategy, edgeRouting, nodePlacementStrategy, spacingPreset);
+  }, [applyAutoLayout, layoutDirection, layeringStrategy, edgeRouting, nodePlacementStrategy, spacingPreset]);
 
   // ── ReactFlow event handlers ──────────────────────────────────────────────
 
@@ -1214,7 +1224,7 @@ function SchemaCanvasInner() {
             onChange={(e) => {
               const next = e.target.value as 'TB' | 'BT' | 'LR' | 'RL';
               setLayoutDirection(next);
-              void applyAutoLayout(next, layeringStrategy, spacingPreset);
+              void applyAutoLayout(next, layeringStrategy, edgeRouting, nodePlacementStrategy, spacingPreset);
             }}
             title="Layout direction -- re-runs Layout immediately"
           >
@@ -1230,7 +1240,7 @@ function SchemaCanvasInner() {
             onChange={(e) => {
               const next = e.target.value as typeof LAYERING_STRATEGIES[number];
               setLayeringStrategy(next);
-              void applyAutoLayout(layoutDirection, next, spacingPreset);
+              void applyAutoLayout(layoutDirection, next, edgeRouting, nodePlacementStrategy, spacingPreset);
             }}
             title="Layering strategy -- re-runs Layout immediately"
           >
@@ -1243,13 +1253,44 @@ function SchemaCanvasInner() {
             <option value="MIN_WIDTH">Min width</option>
           </select>
           <select
+            id="lme-canvas-layout-edge-routing"
+            style={styles.toolbarSelect}
+            value={edgeRouting}
+            onChange={(e) => {
+              const next = e.target.value as typeof EDGE_ROUTINGS[number];
+              setEdgeRouting(next);
+              void applyAutoLayout(layoutDirection, layeringStrategy, next, nodePlacementStrategy, spacingPreset);
+            }}
+            title="Edge routing style -- re-runs Layout immediately"
+          >
+            <option value="ORTHOGONAL">Orthogonal (right angles)</option>
+            <option value="POLYLINE">Polyline (straight)</option>
+            <option value="SPLINES">Splines (curved)</option>
+          </select>
+          <select
+            id="lme-canvas-layout-node-placement"
+            style={styles.toolbarSelect}
+            value={nodePlacementStrategy}
+            onChange={(e) => {
+              const next = e.target.value as typeof NODE_PLACEMENT_STRATEGIES[number];
+              setNodePlacementStrategy(next);
+              void applyAutoLayout(layoutDirection, layeringStrategy, edgeRouting, next, spacingPreset);
+            }}
+            title="Node placement within a layer -- re-runs Layout immediately"
+          >
+            <option value="BRANDES_KOEPF">Brandes-Koepf (ELK default)</option>
+            <option value="LINEAR_SEGMENTS">Linear segments</option>
+            <option value="NETWORK_SIMPLEX">Network simplex</option>
+            <option value="SIMPLE">Simple</option>
+          </select>
+          <select
             id="lme-canvas-layout-spacing"
             style={styles.toolbarSelect}
             value={spacingPreset}
             onChange={(e) => {
               const next = e.target.value as keyof typeof SPACING_PRESETS;
               setSpacingPreset(next);
-              void applyAutoLayout(layoutDirection, layeringStrategy, next);
+              void applyAutoLayout(layoutDirection, layeringStrategy, edgeRouting, nodePlacementStrategy, next);
             }}
             title="Spacing between class boxes -- re-runs Layout immediately"
           >

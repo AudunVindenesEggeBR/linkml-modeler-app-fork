@@ -90,6 +90,21 @@ export interface AutoLayoutOptions {
    * without also supplying whatever model-order data they need.
    */
   layeringStrategy?: typeof LAYERING_STRATEGIES[number];
+  /**
+   * ELK's `elk.edgeRouting` value, passed through verbatim. All three real
+   * values (EDGE_ROUTINGS below) were verified (empirically, against the
+   * bundled elkjs) to run without crashing and produce genuinely different
+   * bend-point output -- none are silently ignored the way `direction`'s
+   * old TB/BT/LR/RL strings were.
+   */
+  edgeRouting?: typeof EDGE_ROUTINGS[number];
+  /**
+   * ELK's `elk.layered.nodePlacement.strategy` value (x-position *within* a
+   * layer -- distinct from layeringStrategy, which decides *which* layer a
+   * node is in). All four values (NODE_PLACEMENT_STRATEGIES below) verified
+   * empirically to run without crashing.
+   */
+  nodePlacementStrategy?: typeof NODE_PLACEMENT_STRATEGIES[number];
   /** Spacing between nodes */
   nodeNodeSpacing?: number;
   /** Spacing between hierarchy levels */
@@ -113,6 +128,15 @@ export const LAYERING_STRATEGIES = [
   'MIN_WIDTH',
 ] as const;
 
+export const EDGE_ROUTINGS = ['ORTHOGONAL', 'POLYLINE', 'SPLINES'] as const;
+
+export const NODE_PLACEMENT_STRATEGIES = [
+  'BRANDES_KOEPF',
+  'LINEAR_SEGMENTS',
+  'NETWORK_SIMPLEX',
+  'SIMPLE',
+] as const;
+
 // Named nodeNodeSpacing/layerSpacing pairs for the toolbar's spacing picker.
 // "normal" is the pair widened from the original 40/80 (see below) once tight
 // spacing was found to leave orthogonal edges no room to route around node
@@ -128,6 +152,8 @@ const DEFAULT_OPTIONS: Required<AutoLayoutOptions> = {
   algorithm: 'layered',
   direction: 'TB',
   layeringStrategy: 'LONGEST_PATH',
+  edgeRouting: 'ORTHOGONAL',
+  nodePlacementStrategy: 'BRANDES_KOEPF',
   ...SPACING_PRESETS.normal,
 };
 
@@ -230,7 +256,8 @@ export async function runAutoLayout(
       'elk.direction': DIRECTION_TO_ELK[options.direction],
       'elk.spacing.nodeNode': String(options.nodeNodeSpacing),
       'elk.layered.spacing.nodeNodeBetweenLayers': String(options.layerSpacing),
-      'elk.edgeRouting': 'ORTHOGONAL',
+      'elk.edgeRouting': options.edgeRouting,
+      'elk.layered.nodePlacement.strategy': options.nodePlacementStrategy,
       // Crossing minimization is one of the three phases the layered
       // algorithm runs (layering, crossing minimization, node placement) --
       // it was already active at ELK's own default settings, just not

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { runAutoLayout, estimateClassNodeSize, estimateEnumNodeSize, LAYERING_STRATEGIES } from '../autoLayout.js';
+import { runAutoLayout, estimateClassNodeSize, estimateEnumNodeSize, LAYERING_STRATEGIES, EDGE_ROUTINGS, NODE_PLACEMENT_STRATEGIES } from '../autoLayout.js';
 import {
   emptySchema,
   emptyClassDefinition,
@@ -202,6 +202,53 @@ describe('runAutoLayout layeringStrategy', () => {
     // every value actually exposed in the UI picker is safe to run.
     for (const strategy of LAYERING_STRATEGIES) {
       const layout = await runAutoLayout(diamondSchema(), { layeringStrategy: strategy }, [], new Set());
+      expect(Object.keys(layout.nodes).length).toBe(6);
+    }
+  });
+});
+
+// ── runAutoLayout: edgeRouting and nodePlacementStrategy are wired through ───
+
+describe('runAutoLayout edgeRouting / nodePlacementStrategy', () => {
+  function diamondSchema(): LinkMLSchema {
+    const schema = emptySchema('TestSchema', 'https://example.org/test', 'test');
+    schema.classes['Root'] = emptyClassDefinition('Root');
+    schema.classes['B'] = { ...emptyClassDefinition('B'), isA: 'Root' };
+    schema.classes['C'] = { ...emptyClassDefinition('C'), isA: 'Root' };
+    schema.classes['E'] = { ...emptyClassDefinition('E'), isA: 'C' };
+    schema.classes['F'] = { ...emptyClassDefinition('F'), isA: 'E' };
+    schema.classes['D'] = { ...emptyClassDefinition('D'), isA: 'B', mixins: ['F'] };
+    return schema;
+  }
+
+  // Regression tests mirroring the layeringStrategy ones above: both options
+  // are ELK's own real enum names forwarded verbatim, but it would be just
+  // as easy for a future refactor to silently stop forwarding one of them
+  // (as literally happened to `direction`) without anything erroring.
+  it('ORTHOGONAL and SPLINES produce different edge bend-point counts', async () => {
+    const orthogonal = await runAutoLayout(diamondSchema(), { edgeRouting: 'ORTHOGONAL' }, [], new Set());
+    const splines = await runAutoLayout(diamondSchema(), { edgeRouting: 'SPLINES' }, [], new Set());
+    const bendCount = (layout: typeof orthogonal) =>
+      Object.values(layout.edges ?? {}).reduce((sum, e) => sum + e.bendPoints.length, 0);
+    expect(bendCount(splines)).not.toBe(bendCount(orthogonal));
+  });
+
+  it('every EDGE_ROUTINGS value runs to completion', async () => {
+    for (const edgeRouting of EDGE_ROUTINGS) {
+      const layout = await runAutoLayout(diamondSchema(), { edgeRouting }, [], new Set());
+      expect(Object.keys(layout.nodes).length).toBe(6);
+    }
+  });
+
+  it('BRANDES_KOEPF and SIMPLE do not produce the same layout', async () => {
+    const brandesKoepf = await runAutoLayout(diamondSchema(), { nodePlacementStrategy: 'BRANDES_KOEPF' }, [], new Set());
+    const simple = await runAutoLayout(diamondSchema(), { nodePlacementStrategy: 'SIMPLE' }, [], new Set());
+    expect(simple.nodes).not.toEqual(brandesKoepf.nodes);
+  });
+
+  it('every NODE_PLACEMENT_STRATEGIES value runs to completion', async () => {
+    for (const nodePlacementStrategy of NODE_PLACEMENT_STRATEGIES) {
+      const layout = await runAutoLayout(diamondSchema(), { nodePlacementStrategy }, [], new Set());
       expect(Object.keys(layout.nodes).length).toBe(6);
     }
   });
