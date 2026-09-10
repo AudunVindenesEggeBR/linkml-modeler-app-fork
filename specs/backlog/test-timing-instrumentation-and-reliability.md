@@ -1,7 +1,7 @@
 # Spec: Timing-instrumentering for testkøyring og containerkall, pluss tiltak mot random-feil i full testsuite
 
-Status: **Del 1 implementert og verifisert empirisk** (sjå diff i `.githooks/pre-push`, vitest/playwright-configane, `.github/workflows/test.yml`, `.gitignore`, `scripts/time-cmd.sh`, CLAUDE.md). **Del 2 gjennomført i fleire rundar** for vitest-core-suiten: (1) 5× baseline + eitt `--maxWorkers=1`-eksperiment (gjorde ting verre, ikkje betre), (2) eitt avgjerande container-baserte eksperiment med `node_modules` flytta til native ext4 — 13-14× raskare, flaksen heilt borte. **Del 2b: kandidat 0 er UTFØRT** (brukaren gav eksplisitt godkjenning) — native Node/pnpm installert på WSL2-verten (pålitleg, 11-14s vs 226-228s install), pluss to nye script (`scripts/setup-native-dev.sh`, `scripts/check-native-dev-requirements.sh`). Sjølve node_modules-relokeringsmekanismen er no stadfesta TO gonger uavhengig (container og ekte native), men **den automatiserte symlink-baserte implementasjonen synte seg upåliteleg** (1 suksess av 9 reelle forsøk) — rotårsak ikkje forstått, sjå "Del 2b" for full soga. Scripta prøver 3× og fell trygt attende til vanleg installasjon utan å øydeleggje repoet. Playwright E2E-baseline og CI-baserte målingar står framleis att. Resten av Del 3 er framleis IKKJE godkjend eller implementert — krev eksplisitt, punktvis godkjenning per CLAUDE.md sitt spesifikasjonsprinsipp.
-Dato: 2026-09-09 (oppdatert same dag: avklaring av opne spørsmål → Del 1 implementert → Del 2 runde 1 (baseline + maxWorkers) → Del 2 runde 2 (native node_modules-eksperiment, etter brukaren sin førespurnad om å evaluere "installer mest mogleg lokalt") → Del 2b (kandidat 0 utført på eksplisitt brukar-godkjenning, med påliteleiks-soga som følgde))
+Status: **Del 1 implementert og verifisert empirisk** (sjå diff i `.githooks/pre-push`, vitest/playwright-configane, `.github/workflows/test.yml`, `.gitignore`, `scripts/time-cmd.sh`, CLAUDE.md). **Del 2 gjennomført i fleire rundar** for vitest-core-suiten: (1) 5× baseline + eitt `--maxWorkers=1`-eksperiment (gjorde ting verre, ikkje betre), (2) eitt avgjerande container-baserte eksperiment med `node_modules` flytta til native ext4 — 13-14× raskare, flaksen heilt borte. **Del 2b: kandidat 0 er UTFØRT** (brukaren gav eksplisitt godkjenning) — native Node/pnpm installert på WSL2-verten (pålitleg, 11-14s vs 226-228s install), pluss to nye script (`scripts/setup-native-dev.sh`, `scripts/check-native-dev-requirements.sh`). Sjølve node_modules-relokeringsmekanismen var på det tidspunktet stadfesta TO gonger uavhengig (container og ekte native) via symlink, men den automatiserte symlink-implementasjonen synte seg upåliteleg (1 suksess av 9). **Del 2c: testa `mount --bind` som erstatning for symlink — 5 av 5 uavhengige, ferske forsøk lukkast, OG oppdaga at det ikkje treng `sudo` i det heile (unprivilegerte mount-namespace via `unshare`). Del 2c-tilrådinga er no GODKJEND og IMPLEMENTERT — men avgrensa til `.githooks/pre-push` (brukaren sitt eksplisitte scope-val), IKKJE `scripts/setup-native-dev.sh` sin interaktive dagleg-bruk-mekanisme, som står uendra.** Sjå "Tilråding — GODKJENT og IMPLEMENTERT" under Del 2c. Fann og retta samtidig ein reell, aktiv `--run`-flagg-regresjon i den committa hooken (ville feila HEILE `git push` øyeblikkeleg). **E2E-infrastrukturen er no FULLT verifisert enda til enda: Chromium nedlasta, dei 3 manglande system-pakkane (`libnspr4 libnss3 libasound2t64`) identifisert og installert av brukaren sjølv (`sudo apt-get`), `scripts/check-native-dev-requirements.sh` går grønt, og ein full `.githooks/pre-push`-køyring gjennomfører heile E2E-suiten (4/7 testar bestod — dei 3 attverande feila er testnivå-feil, ikkje infrastruktur, sjå "Status" under Del 2c for detaljar).** CI-baserte målingar står framleis att.
+Dato: 2026-09-10 (Del 1 implementert → Del 2 runde 1 (baseline + maxWorkers) → Del 2 runde 2 (native node_modules-eksperiment) → Del 2b (kandidat 0 utført, symlink upåliteleg) → Del 2c (mount --bind testa, 5/5 pålitleg, ingen sudo naudsynt) → Del 2c-tilråding godkjend og implementert i `.githooks/pre-push` → Chromium nedlasta, manglande system-pakkar identifisert → brukaren installerte pakkane, full E2E-infrastruktur verifisert → Del 2d: parallelliserings-evaluering — vitest sin eigen arbeidarkonfig og tvers-pakke-orkestrering er alt nær optimum (manuell overstyring gjer ting VERRE), men eit varm-cache-funn (E2E 169s→32s frå andre push) er eit mykje større, alt-eksisterande klokketid-tiltak)
 Ønske (opphavleg, frå brukaren): "Det er eit førande prinsipp at vi skal bruke WSL2 og mest mulig skal kjøre i containere. Kjøring av tester går sakte og når vi kjører full testsuite får vi alltid random feil som kan være knytta til treg io og timeouts. Legg til timere i alle tester og i alle containerkall slik at vi kan finne ut nøyaktig kva som tar tid og kom med forslag til effektiviseringstiltak som reduserer klokketida samtidig som vi fjærner dei random feila som oppstår ved kjøring av full testsuite."
 
 ## Stadfesta fakta (denne økta)
@@ -204,11 +204,174 @@ Dette er IKKJE ei rein suksesshistorie. Rekkefølgja av hendingar, i kronologisk
 - **Sjølve mekanismen ("node_modules av `/mnt/c`, behald repoet der") er no stadfesta TO gonger uavhengig** — éin gong via container-bind-mount (Del 2, 1 køyring), éin gong via ekte native symlink (denne seksjonen, 5 fulle testkøyringar) — begge med dramatisk, konsistent forbetring når dei fungerer.
 - **Den automatiserte, symlink-baserte implementasjonen på nett DENNE WSL2/drvfs-oppsettet er IKKJE påliteleg** — 1 suksess av 9 reelle forsøk. Rotårsaka er ikkje forstått, og motseiande data (isolert test lukkast konsekvent, ekte pnpm feilar konsekvent) tyder på at feilen sit i eit samspel mellom pnpm sin interne installasjonslogikk og drvfs, ikkje i symlink-mekanismen isolert sett.
 - **Native Node/pnpm-installasjonen sjølv (utan relokering) er derimot ei stadfesta, pålitleg, uvilkårleg forbetring** (11-14s vs 226-228s install, ingen containeroverhead) og er verande installert på verten.
-- Realistiske vegar vidare for relokeringsdelen spesifikt, ingen av dei utført i denne runda:
-  1. Djupare WSL2/drvfs-feilsøking (t.d. `strace`, eller rapportere som ein mogleg WSL2-feil oppstraums) — usikker tidsbruk, usikkert utfall.
-  2. Ein privilegert `mount --bind` i staden for symlink — venta meir robust (ein ekte kernel-VFS-mount, ikkje ei filsystem-drivar-tolka symlink-oppslag), men krev `sudo`, som krev brukaren sitt eige passord interaktivt (Claude kan ikkje eller skal ikkje forsyne dette). Ikkje forsøkt.
-  3. Attende til det ALT STADFESTA pålitelege containerbaserte bind-mount-mønsteret (Del 2 sitt opphavlege eksperiment) for den spesifikke relokeringsgevinsten, medan native Node/pnpm framleis vert brukt for alt anna — ein hybrid, ikkje forsøkt/utforma i detalj enno.
-  4. Berre halde fram med `scripts/setup-native-dev.sh` sin retry-og-fall-attende-mekanisme som han er — han gjev IKKJE relokeringsgevinsten pålitleg, men garanterer at repoet aldri vert ståande øydelagt, og relokering LUKKAST av og til (uklårt kor ofte over fleire dagar/øktar), så nettogevinsten over tid er truleg framleis positiv sjølv utan full pålitelegheit.
+- Realistiske vegar vidare for relokeringsdelen spesifikt, status oppdatert etter Del 2c:
+  1. Djupare WSL2/drvfs-feilsøking av symlink-feilen spesifikt (t.d. `strace`, eller rapportere som ein mogleg WSL2-feil oppstraums) — ikkje lenger prioritert, sidan kandidat 2 under no er stadfesta som ei fungerande erstatning; symlink-rotårsaka treng ikkje forståast for å kome vidare.
+  2. **Ein privilegert `mount --bind` i staden for symlink — TESTA i Del 2c, med eit viktig korrigert premiss: krev IKKJE `sudo`/brukaren sitt passord i det heile.** Sjå Del 2c for full metode og resultat: 5 av 5 uavhengige, ferske forsøk lukkast (mot symlinken sin 1 av 9).
+  3. Attende til det ALT STADFESTA pålitelege containerbaserte bind-mount-mønsteret (Del 2 sitt opphavlege eksperiment) for den spesifikke relokeringsgevinsten, medan native Node/pnpm framleis vert brukt for alt anna — no overflødig, sidan kandidat 2 (mount --bind, native, utan container) gjev same eller betre pålitelegheit utan container-overhead.
+  4. Berre halde fram med `scripts/setup-native-dev.sh` sin symlink-baserte retry-og-fall-attende-mekanisme som han er — **allereie forbetra av kandidat 2**; sjå Del 2c for tilrådd neste steg (byt `setup-native-dev.sh` sin relokeringsmekanisme frå symlink til `mount --bind`).
+
+## Del 2c — Testa: privilegert `mount --bind` i staden for symlink, med eit korrigert premiss (ikkje faktisk privilegert)
+
+Status: **Gjennomført denne runda, på brukaren sin eksplisitte førespurnad ("oppdater specen med testing av priviligert mount --bind").** Dette er eit diagnostisk eksperiment i same kategori som resten av Del 2 (måling for å informere eit seinare, eksplisitt godkjent Del 3-tiltak) — sjølve KODA (`scripts/setup-native-dev.sh`) er IKKJE endra i denne runda, berre spesifikasjonen, i tråd med CLAUDE.md sitt spesifikasjonsdrevne prinsipp.
+
+### Korrigert premiss: `mount --bind` treng ikkje `sudo` i det heile
+
+Del 2b sin konklusjon antok at `mount --bind` krev root/`sudo` (stadfesta ved å faktisk prøve: `sudo -n true` → `sudo: interactive authentication is required`, og Claude har korkje tilgang til eller skal handtere brukaren sitt passord). Men Linux støttar **unprivilegerte brukar- + mount-namespace** (`unshare --mount --user --map-root-user ...`), som let ein vanleg brukar utføre `mount --bind` **heilt utan `sudo`**, avgrensa til sin eigen private mount-namespace. Stadfesta direkte på denne verten:
+
+```
+$ unshare --mount --user --map-root-user echo "unshare works"
+unshare works
+```
+
+Dette er ikkje ein tryggleiksfeil eller eit hack — det er ein standard, tilsikta Linux-kjernefunksjon (brukt m.a. av rootless podman/Docker sjølv, som alt køyrer på denne verten). Konsekvens: kandidat 2 frå Del 2b ("privilegert mount --bind... ikkje forsøkt") kunne testast fullt ut, utan å involvere brukaren sitt passord i det heile.
+
+### Isolert stadfesting (før noko rørte ved det ekte repoet)
+
+Ein enkel, reversibel test: montér ei ny, tom, native ext4-mappe oppå ei mappe INNI repoet (på 9p/drvfs), skriv gjennom monteringspunktet, stadfest at skrivinga faktisk landar i den native kjeldemappa, og stadfest at monteringa forsvinn att av seg sjølv når prosessen/namespace-et avsluttar (ingen manuell `umount` naudsynt):
+
+```
+$ mount | grep mount-bind-test-target
+/dev/sdd on .../mount-bind-test-target type ext4 (rw,relatime,discard,errors=remount-ro,data=ordered)
+```
+
+Lesing og skriving gjennom monteringspunktet fungerte begge vegar (verifisert med `cat`/`echo >`), og etter at `unshare`-prosessen avslutta var monteringspunktet att ei tom, vanleg mappe på drvfs — inga oppstramming, inga `sudo umount`, ingen risiko for at ei øydelagd/halvvegs montering vart ståande att slik symlink-feilen (Del 2b, punkt 6) kunne gjere med den native måtmappa.
+
+### Ekte eksperiment: `node_modules` + `packages/core/node_modules` bind-mounta til native ext4
+
+**Oppsett:** éin samanhengande `unshare --mount --user --map-root-user bash -c '...'`-prosess (må vere éin prosess/namespace, sidan monteringane berre er synlege i det same namespace-et og undertrea hans) som (1) opprettar tomme mappe-monteringspunkt for `node_modules` og `packages/core/node_modules` på repoet (framleis på drvfs), (2) monterer to tomme native ext4-mapper (`/home/ave/nm-bind-experiment/{root-nm,core-nm}`) oppå desse, (3) køyrer `pnpm install --frozen-lockfile`, (4) køyrer `pnpm --filter @linkml-editor/core test`. Ingen endring av `pnpm config store-dir`, som alt peika til native disk frå Del 2b.
+
+**Resultat — 5 uavhengige, FERSKE forsøk** (kvar med nye, tomme native mål-mapper og ei ny `unshare`-økt, for å teste akkurat den same "kald start"-situasjonen som fekk symlinken til å feile 8 av 9 gonger):
+
+| Forsøk | `pnpm install` | Test-resultat |
+|---|---|---|
+| 1 (fullt, 5× testkøyring i same økt) | 4s | **5/5 testkøyringar: 0 feil, 693/693 testar bestod kvar gong, 9-11s per køyring** |
+| A | 4s, exit=0 | (install-nivå verifisert) |
+| B | 3s, exit=0 | (install-nivå verifisert) |
+| C | 3s, exit=0 | (install-nivå verifisert) |
+| D | 4s, exit=0, deretter re-montert og full testkøyring: **693/693 testar bestod, 0 feil, 10,18s** | |
+
+**5 av 5 uavhengige, ferske forsøk lukkast — 0 feil.** Dette står i skarp kontrast til symlink-metoden i Del 2b (1 suksess av 9 reelle forsøk, same type "kald start"-scenario). To av dei fem forsøka (1 og D) vart følgt heilt gjennom ein full testkøyring (ikkje berre `pnpm install`) med identisk, feilfritt resultat som den EINE gongen symlinken lukkast — installasjonstida var attpåtil raskare (2-4s mot 11s for symlinken, sannsynlegvis fordi pnpm sin store-cache alt var varm frå tidlegare forsøk i denne runda).
+
+**Falskt alarmsignal, retta før konklusjon (viktig metodisk poeng):** eit fyrste forsøk på å verifisere forsøk C/D sjekka `node_modules/.bin/vitest` (rot-nivå) og fann han manglande — men dette var ein feil i VERIFIKASJONEN, ikkje eit reelt problem: `vitest` er ein `devDependency` av `@linkml-editor/core` spesifikt, så pnpm plasserer `.bin/vitest`-symlinken korrekt i `packages/core/node_modules/.bin/`, ikkje i rot-`node_modules/.bin/`. Ein faktisk testkøyring (ikkje berre ein binærfil-sjekk) stadfesta at alt fungerte. Dette er sjølv eit døme på CLAUDE.md sitt "verifiser empirisk, ikkje anta"-prinsipp — å stole på feil verifikasjonslogikk kunne ha ført til ei falsk "kandidat 2 feila òg"-konklusjon.
+
+### Oppdatert samanlikning: symlink vs. `mount --bind`
+
+| | Symlink (Del 2b) | `mount --bind` via unprivilegert namespace (Del 2c) |
+|---|---|---|
+| Krev `sudo`/passord | Nei (men trudd å vere naudsynt for bind-mount-alternativet — feilaktig premiss, no retta) | **Nei** — unprivilegerte user+mount-namespace |
+| Pålitelegheit, ferske forsøk | 1 suksess av 9 | **5 suksess av 5** |
+| Oppstramming ved feil | Kan tømme den native mål-mappa som sideeffekt (Del 2b, punkt 6) — treng eksplisitt reset-logikk | Automatisk — monteringa forsvinn heilt av seg sjølv når prosessen/namespace-et avsluttar, uansett om noko inni feila |
+| Kva slags mekanisme | Filsystem-drivar-tolka symlink-oppslag (drvfs-spesifikk oppførsel, ikkje fullt forstått) | Ekte kjernenivå VFS-mount (same mekanisme rootless podman sjølv brukar) |
+| Krev at monteringa held seg i live på tvers av separate shell-kall | Nei (symlinken er ein permanent filsystem-entitet) | **Ja** — mount+install+test må skje i éin samanhengande `unshare`-prosess/skript, sidan monteringa berre er synleg i det namespace-et. Dette er ei reell arkitektonisk avgrensing for korleis `scripts/setup-native-dev.sh` må omformast (kan ikkje berre "montere og gå vidare" som eit separat steg slik symlink-oppretting kunne). |
+
+### Tilråding — GODKJENT og IMPLEMENTERT (denne runda)
+
+Brukaren fekk spørsmål om kva av tre konkrete scope-alternativ (sjå under), og valde det snevraste: **berre `.githooks/pre-push`, ikkje `scripts/setup-native-dev.sh` sin interaktive dagleg-bruk-mekanisme.** Grunngjeving for valet: `pre-push` er allereie éin samanhengande skript-invokasjon (ikkje ei interaktiv fleire-terminal-økt), så avgrensinga "monteringa må halde seg i live i éin `unshare`-prosess" (tabellen over) er eit ikkje-problem akkurat der — og det er samstundes staden der flaksen/treigheita faktisk kostar mest (kvar einaste push).
+
+**Alternativ som vart vurdert og valt bort:**
+1. Persistent interaktiv dev-skal (`scripts/native-dev-shell.sh`) som pakkar inn HEILE utviklingsøkta — større endring av kvardagsarbeidsflyten, valt bort.
+2. Berre `.githooks/pre-push`, ingen nye filer, ingen endring av `setup-native-dev.sh` — **valt.**
+3. (Same som 2, men opna for eit separat "køyr testar pålitelig"-hjelpeskript) — ikkje naudsynt, `pre-push` sjølv dekkjer behovet.
+
+**Implementert i `.githooks/pre-push`:**
+- Sjekkar per node_modules-sti (rot, `packages/core`, `packages/web`) om han alt er ein symlink (frå `setup-native-dev.sh` sin separate, interaktive relokering) — i så fall vert han IKKJE rørt, ingen bind-mount. Berre stiar som framleis er vanlege mapper får bind-mount-behandling. Dette gjer at dei to mekanismane (symlink for dagleg interaktiv bruk, mount --bind for pre-push) kan eksistere side om side utan å forstyrre kvarandre.
+- Når minst éin sti treng bind-mount OG `unshare --mount --user --map-root-user` faktisk fungerer på verten (begge sjekka eksplisitt, med fallback til vanleg køyring elles): heile `pnpm install --frozen-lockfile` + unit- + E2E-testkøyringa skjer INNI éin samanhengande `unshare`-prosess, med native ext4-mål under `~/.cache/linkml-editor-pre-push-nm/`.
+- **Sidefiks, oppdaga medan denne fila vart lesen for å planleggje endringa:** den committa hooken kalla `pnpm --filter @linkml-editor/core test --run` — stadfesta empirisk (før denne endringa) å faktisk FEILE med `ERROR Unknown option: 'run'`, sidan `test`-scriptet i `packages/core/package.json` allereie er `vitest run` (ein ekstra bar `--run` vert då tolka som eit pnpm-nivå-flagg, ikkje vidaresendt). Det tyder **kvar einaste `git push` ville ha feila øyeblikkeleg** med denne feilen, før noka reell testkøyring i det heile — ein reell, aktiv regresjon i den ukommitta test-timing-instrumenteringa frå tidlegare i denne spesifikasjonen. Retta ved å fjerne det overflødige `--run`-flagget (scriptet gjer det alt).
+
+**Testa (køyrde heile hooken direkte, `bash .githooks/pre-push`, ikkje via ein ekte `git push`):**
+- Symlink-ekskludering: stadfesta isolert at ein sti som faktisk ER ein symlink vert korrekt utelaten frå `NEEDS_BIND`-lista.
+- Full køyring frå reint utgangspunkt (ingen `node_modules` i det heile): `pnpm install` 3s, unit-testkøyringa 9s med **0 "Timeout waiting for worker to respond"-feil, 28/28 testfiler, 693/693 testar bestod** — matchar Del 2c sine tal nøyaktig, no verifisert gjennom den faktiske hooken, ikkje berre eit isolert eksperiment. `scripts/time-cmd.sh` sin timing-logg fanga alle tre stega korrekt (`pre-push-install`, `pre-push-unit`, `pre-push-e2e`) med rett varigheit og exit-kode.
+- **E2E-steget feila** — men av ein grunn som IKKJE har med denne endringa å gjere: Playwright sine nedlasta Chromium-binærfilar finst ikkje på denne native verten (`Executable doesn't exist at .../chrome-headless-shell`). Dette er eit kjent, ope hol frå Del 2b (native Node/pnpm vart sett opp, men `pnpm exec playwright install` vart aldri køyrt) — ikkje noko denne runda skal fikse stille, sidan det er ei separat, potensielt stor nedlasting som brukaren bør be om eksplisitt. Sjølve hook-logikken (feilpropagering, exit-kode, timing-logging) fungerte korrekt: E2E-feilen vart fanga, logga med `exit=1`, og heile hooken feila synleg (som han skal, for å blokkere ein push med reelle E2E-feil) i staden for å feile stille eller halde fram.
+
+**Ope for vidare arbeid, oppdatert:** `pnpm exec playwright install chromium` vart faktisk køyrt på brukaren sin eksplisitte førespurnad (nedlasta Chromium 149/chrome-headless-shell/FFmpeg til `~/.cache/ms-playwright`, ~295 MB totalt). Ein full re-køyring av `.githooks/pre-push` synte då at nedlastinga i seg sjølv IKKJE var nok — ein NY, separat blokkering dukka opp.
+
+### To sudo-kommandoar identifisert i denne runda (ingen av dei utførte av Claude — krev brukaren sitt eige passord)
+
+1. **Frå Del 2c/tilrådinga (attende referert):** `unshare --mount --user --map-root-user` treng IKKJE `sudo` i det heile — dette var nettopp poenget med heile Del 2c-funnet. Inga sudo-kommando naudsynt for sjølve node_modules-relokeringa i `pre-push`.
+2. **NY, denne runda: manglande system-delte bibliotek for headless Chromium.** Etter at Chromium vart lasta ned, feila E2E-testane med `error while loading shared libraries: libnspr4.so: cannot open shared object file`. `ldd` mot den nedlasta `chrome-headless-shell`-binærfila synte **4 manglande `.so`-filer**: `libnspr4.so`, `libnss3.so`, `libnssutil3.so`, `libasound.so.2`. Stadfesta (utan sudo, via `apt-cache policy` + `apt-get download`/`dpkg -c`, som ikkje krev root) kva Ubuntu-pakkar som faktisk gir desse filene på denne verten (Ubuntu 26.04 "Resolute Raccoon"):
+   - `libnspr4` → `libnspr4.so`
+   - `libnss3` → BÅDE `libnss3.so` OG `libnssutil3.so` (bunta saman i éin pakke, ikkje to)
+   - `libasound2t64` → `libasound.so.2` (merk: **ikkje** `libasound2` — den pakken finst ikkje på denne Ubuntu-versjonen, `t64`-transisjonspakken er den rette)
+
+   **Kommandoen brukaren må køyre:**
+   ```
+   sudo apt-get update && sudo apt-get install -y libnspr4 libnss3 libasound2t64
+   ```
+   Dette er det playwright sin eigen `playwright install --with-deps` ville gjort automatisk (han krev òg sudo internt) — men sidan Claude korkje har eller skal handtere brukaren sitt passord, må kommandoen køyrast av brukaren direkte, anten via `playwright install-deps chromium` eller den eksplisitte `apt-get`-linja over (verifisert å gje identisk resultat, sidan begge til sjuande og sist berre installerer desse tre pakkane).
+
+`scripts/check-native-dev-requirements.sh` er oppdatert med ein ny, dedikert sjekk (`check_playwright_system_deps`) som oppdagar akkurat denne mangelen via `dpkg -s` og skriv ut nøyaktig kommandoen over som `fix`-forslag — stadfesta å fungere (feila korrekt med denne meldinga på denne verten, før pakkane er installerte).
+
+**Status: brukaren køyrde `sudo apt-get install -y libnspr4 libnss3 libasound2t64` sjølv, stadfesta installert (`dpkg -s`, alle tre), og `scripts/check-native-dev-requirements.sh` går no fullstendig grønt.**
+
+**Full re-køyring av `bash .githooks/pre-push` (framleis frå reint utgangspunkt, ikkje via ein ekte `git push`):**
+
+| Steg | Resultat |
+|---|---|
+| `pnpm install` | 4s, exit=0 |
+| Unit-testar (`@linkml-editor/core`) | 10s, exit=0, **0 flake-feil, 693/693 testar bestod, 28/28 filer** |
+| E2E-testar (`@linkml-editor/web`) | 169s (2,8 min), exit=1, **4 av 7 testar bestod** |
+
+**Node_modules-relokeringa (Del 2c sin hovudfunn) og Chromium-infrastrukturen (nedlasting + system-bibliotek) er no BÅDE fullt verifiserte** — nettlesaren startar, koplar til dev-serveren, og køyrer faktiske testar. Dette er den fyrste gongen E2E-suiten i det heile har køyrt til fullføring på denne native verten (tidlegare stega feila anten på manglande binærfil eller manglande delte bibliotek, aldri kome så langt som til å faktisk teste applikasjonen).
+
+**Dei 3 attverande feila er IKKJE infrastruktur-/miljøfeil — dei er feil PÅ TESTNIVÅ, urelaterte til denne spesifikasjonen sitt tema (timing/pålitelegheit av testKØYRINGA, ikkje korrektheita til sjølve testane):**
+- `golden-path.spec.ts` og `new-project.spec.ts`: begge feilar på det same mønsteret — eit klikk på `#lme-canvas-add-class` vert gjentekne gonger avbrote fordi eit `<div>Rendering</div>`-overlay "intercepts pointer events" (Playwright sin eigen auto-retry prøvde i opptil ~500ms-intervall, gav til slutt opp).
+- `view-layout-bleed.spec.ts`: ei simulert dra-handling flytta ikkje noden så mykje som venta (`expect(...).toBeGreaterThan(50)`, fekk 0).
+
+Dette **kan** vere ekte, fortente E2E-testfeil (fortener eiga feilsøking), eller det kan vere at denne native verten sin fyrste nokosinne E2E-køyring rett og slett har annleis timing-karakteristikk enn kva desse testane vart opphavleg verifiserte mot (t.d. ein tregare fyrste-gongs Vite-kaldstart som gjer at "Rendering"-overlayen står lenger oppe enn testen sitt implisitte tidsvindauge tillet). **Ingen av desse er utforska vidare i denne runda** — dei ligg utanfor denne spesifikasjonen sitt mandat (timing-instrumentering + pålitelegheit av SJØLVE testkøyringa, ikkje korrektheita til individuelle E2E-testar) og krev eit separat, eksplisitt brukarval om å prioritere.
+
+**Korrigering (frå Del 2d under):** hypotesen over om "fyrste-gongs Vite-kaldstart" som forklaring på DEI 3 TESTFEILA held ikkje — Del 2d stadfesta at sjølve suitetida ELLES vart 5× raskare på seinare, varme køyringar (169s → 32-37s), men **nøyaktig dei same 3 testane feila på nøyaktig same måte** på både den kalde og dei varme køyringane. Kaldstart-timing forklarer altså ikkje testfeila sjølv om han forklarer mykje av totaltida — dei 3 feila ser ut til å vere ekte, konsistente testfeil (eller eit ekte, konsistent miljøavvik), ikkje eit engongs-timing-slumpetreff.
+
+**Konklusjon: Del 2c sin `mount --bind`-tilråding er no 100 % implementert og verifisert for BÅDE unit- og E2E-delen av `pre-push`, inkludert heile kjeda av tidlegare ukjende blokkeringar (manglande browser-binærfil → manglande system-bibliotek → no faktisk fungerande).** Dei 3 gjenverande E2E-testfeila er ei separat sak.
+
+## Del 2d — Evaluering: kan vi auke parallellisering for å spare klokketid?
+
+Status: **Evaluert empirisk denne runda, på brukaren sin eksplisitte førespurnad ("evaluer om vi no kan øke parallelisering... slik at vi kan spare klokketid både på full test suite og pre-commit hooken"). Reint diagnostisk — ingen kodeendring gjort, berre målingar og ei tilråding.** Konteksten som gjer dette spørsmålet verdt å stille no: Del 2/2b/2c sin resonnering rundt parallellisering (t.d. `--maxWorkers=1`-eksperimentet i Del 2, som gjorde ting mykje verre) galdt eit heilt anna scenario — `node_modules` på treg `/mnt/c`-disk, der FLASKEHALSEN VAR I/O-ventetid. No som `node_modules` kan relokerast til native disk (Del 2c), er det ikkje lenger gitt at same konklusjon gjeld — flaskehalsen kan ha flytta seg til noko anna (CPU-bunde testkøyring), der parallellisering kan verke heilt annleis.
+
+**Tre separate spørsmål vart evaluerte, kvar med sin eigen konklusjon:**
+
+### 1. Vitest sin EIGEN arbeidar-/pool-konfigurasjon for `packages/core` (28 testfiler) — svar: NEI, ikkje rør han
+
+Testa `npx vitest run` (ingen flagg, vitest sin eigen auto-deteksjon) mot eksplisitte `--maxWorkers=2/4/8/14/20` og `--pool=threads`, alle på native bind-mounta `node_modules` (14 CPU-kjernar, 27 GB RAM tilgjengeleg på denne verten). Kvar variant køyrd minst 2×, i tillegg ein eigen kontrollrunde der standard vart køyrd BÅDE fyrst og sist (for å utelukke ein rekkjefølgje-/oppvarmingseffekt):
+
+| Variant | Varigheit (fleire målingar) |
+|---|---|
+| **Standard (ingen flagg)** | **8,7s / 8,9s / 9,9s** (fyrst) — **10,4s / 10,4s / 10,8s** (sist, etter alle andre variantar) |
+| `--maxWorkers=2` | 17,3s / 17,4s |
+| `--maxWorkers=4` | 12,4s / 17,5s — og 12,8s / 13,0s ved re-sjekk |
+| `--maxWorkers=8` | 16,2s / 13,5s |
+| `--maxWorkers=14` (= talet på kjernar) | 13,4s / 12,9s |
+| `--maxWorkers=20` (over talet på kjernar) | 14,8s / 13,2s |
+| `--pool=threads` (standard workers) | 12,6s / 12,7s |
+
+**Eintydig resultat: STANDARD (ingen manuell overstyring) er raskast i KVART EINASTE forsøk** — typisk 8,7-10,8s mot 12,4-17,5s for alle manuelle alternativ (25-70 % tregare). Dette gjeld sjølv når standard vert køyrd SIST (etter at systemet alt har vore under last frå dei andre testane), så det er ikkje ein rein oppvarmings-/rekkjefølgje-artefakt. **Tilråding: ikkje set `--maxWorkers` eller `--pool` manuelt nokon stad i repoet.** Vitest sin eigen auto-deteksjon (som mest truleg tek omsyn til fleire faktorar enn berre kjernetal — t.d. faktisk filtal, minnebruk, eller dynamisk lastbalansering — på ein måte ein fast tal ikkje kan) er alt betre tilpassa denne verten enn noko av dei manuelle verdiane som vart prøvde.
+
+### 2. Tvers-pakke-parallellisering (`pnpm -r test` standard vs. `pnpm -r --parallel test`) — svar: NEI, inga målbar skilnad
+
+3 av 6 pakkar har eit `test`-script (`core`: 28 filer, `electron`: 1 fil, `web` unit: 4 filer). Testa standard `pnpm -r test` (respekterer topologisk rekkjefølgje + ein implisitt samstundes-grense) mot `pnpm -r --parallel test` (ignorerer heilt rekkjefølgje/grense), 3× kvar, alle med native bind-mounta `node_modules` for alle pakkane:
+
+| Variant | Varigheit |
+|---|---|
+| `pnpm -r test` (standard) | 11s / 11s / 11s |
+| `pnpm -r --parallel test` | 11s / 12s / 12s |
+
+**Ingen reell skilnad.** Forklaring, stadfesta ved å sjå på per-pakke-varigheit inni same køyring: `core` (8,4-10,3s) dominerer TOTALT — `electron` (0,3-0,6s) og `web` unit (1,4-3,7s) er nærmast neglisjerbare i samanlikning (til saman under 10 % av totaltida). Sjølv om dei to små pakkane vart perfekt overlappa med `core`, ville det spart under eitt sekund. **Tilråding: ikkje bry deg med `--parallel` for `pnpm -r test` — flaskehalsen er heilt inni `core` sin eigen suite, ikkje i korleis pakkane vert orkestrerte seg imellom.**
+
+### 3. `pre-push`: unit- og E2E-testar samstundes i staden for sekvensielt — svar: JA, moderat gevinst (~14 %), MEN eit viktig sideoppdaga funn er MYKJE større
+
+**Sideoppdaga funn, viktigare enn sjølve parallelliserings-spørsmålet:** E2E-suiten sin varigheit synte seg å vere DRAMATISK avhengig av om det er fyrste eller seinare gong ho køyrer mot eit gitt sett med native `node_modules` — **169s (2,8 min) fyrste gong, 32-37s alle seinare gongar, målt fleire gonger** — ein faktor på nesten 5×. Dette er nesten heilt sikkert kostnaden ved Vite sin dependency-pre-bundling-cache (`node_modules/.vite`) som vert bygd frå botnen fyrste gong, men ligg VARM og gjenbrukbar i den native `node_modules`-mappa etterpå. Sidan `.githooks/pre-push` (Del 2c) alt brukar EIN FAST, VEDVARANDE native mål-katalog (`~/.cache/linkml-editor-pre-push-nm/`, ikkje sletta mellom push-ar), får ein ekte brukar denne 5×-gevinsten **automatisk og gratis** frå og med andre push — utan at noko meir treng byggjast. Dette einskilde funnet er eit mykje større klokketid-sparande tiltak enn nokon av parallelliserings-spørsmåla under, og krev ingen implementering — han er alt der, ein konsekvens av korleis Del 2c vart bygd.
+
+**Sjølve parallelliserings-spørsmålet, målt med varme cachar (etter at kaldstart-kostnaden over var betalt), for å unngå å blande dei to effektane:**
+
+| Variant | Varigheit |
+|---|---|
+| E2E åleine (sekvensielt etter unit, ikkje målt her — unit tek 10-11s frå del 1 over) | ~32-33s |
+| E2E + unit SAMSTUNDES (bakgrunnsjobbar, byrja likt) | **37s totalt** (2× målt, begge 37s) |
+
+Sekvensielt ville vore ~32s (e2e) + ~10s (unit) = **~42-43s**. Samstundes gav **37s** — ei ekte, men moderat, spart tid på **~5-6s (~13-14 %)**, ikkje dei naivt venta ~10s. Grunnen til skilnaden: E2E sjølv vart MÅLBART tregare når han delte CPU med den samstundes unit-testkøyringa (32-33s åleine → tilsvarande ~37s når han deler ressursar med unit-suiten, sjølv om unit-suiten sjølv er ferdig etter berre 10-11s av dei 37) — ei ekte, om enn liten, ressurskonkurranse, ikkje gratis parallellisme. Dette er konsistent med funn 1 over: å presse fleire samstundes CPU-tunge prosessar på denne verten har ein reell, om lita, kostnad, ikkje null.
+
+**Tilråding (forslag, IKKJE implementert):** verdt å implementere i `.githooks/pre-push` (start unit- og E2E-steget som to bakgrunnsjobbar i staden for sekvensielt, `wait` på begge), men er ei moderat, ikkje dramatisk, forbetring (~5-6s av eit no typisk ~40-50s totalt pre-push-løp) mot noko meir skriptkompleksitet (to samstundes `scripts/time-cmd.sh`-kall, host-prosesskoordinering, at feil frå BEGGE prosessane må fangast og rapporterast tydeleg i staden for at éin feil stoppar den andre tidleg). Gitt at Del 2c sin varm-cache-oppdaging over alt sparer mykje meir (169s → 32s) heilt utan denne endringa, er den relative verdien av å i tillegg leggje til samstundes køyring mindre enn han såg ut før dette vart målt.
+
+**Samla konklusjon for Del 2d:** Svaret på "kan vi auke parallellisering" er **stort sett NEI** for dei to spørsmåla brukaren opphavleg lurte mest på (vitest sin eigen arbeidarkonfigurasjon, tvers-pakke-orkestrering) — begge er alt nær sitt optimum, og å røre dei manuelt gjer ting VERRE, ikkje betre. Den eine staden med ei reell, om moderat, gevinst (pre-push sin unit+E2E-sekvens) er mindre viktig enn det store, allereie-eksisterande varm-cache-funnet som gjer E2E 5× raskare frå og med andre push, heilt uavhengig av parallellisering.
 
 ## Del 3 — Kandidatar til effektiviseringstiltak (IKKJE godkjende — til vurdering)
 
@@ -220,7 +383,7 @@ Ranger etter venta gevinst basert på fakta over, men **ingen av desse skal impl
 
 **Oppdatert etter Del 2-resultat (runde 2 — native `node_modules`):** ein NY kandidat (0) er lagt til øvst, basert på det klaraste funnet i heile Del 2 — sjå "Diagnostisk eksperiment: `node_modules` på native ext4" over. Han er ranger føre alle dei andre fordi han er den einaste som faktisk synte stor, målt effekt (13-14× på testtid, flaksen borte) i staden for berre teoretisert effekt.
 
-0. **(UTFØRT — delvis pålitleg, sjå "Del 2b" over for full soga) Relokér `node_modules` (og pnpm sin store-dir) til native ext4-disk, behald sjølve repoet på `/mnt/c`.** Godkjent eksplisitt av brukaren ("utfør tiltak 0 med nativet node/pnpm-oppsett på WSL2-verten") og implementert via `scripts/setup-native-dev.sh` + `scripts/check-native-dev-requirements.sh`. **Resultat: mekanismen er stadfesta (to uavhengige fulle valideringar — container-bind-mount og ekte native symlink — begge synte 10-20× fart-forbetring og null feil når dei fungerte), men den automatiserte symlink-baserte relokeringa er UPÅLITELEG på denne WSL2/drvfs-konfigurasjonen (1 suksess av 9 reelle forsøk, rotårsak ikkje forstått).** Native Node/pnpm-installasjonen sjølv (utan relokering) ER pålitleg og gir ei stadfesta, uvilkårleg forbetring (11-14s vs 226-228s install) og er verande installert. `setup-native-dev.sh` prøver relokering opptil 3 gonger med ekte verifikasjon, og fell reint attende til vanleg installasjon utan å øydeleggje repoet dersom relokering ikkje kan stadfestast. Vidare arbeid for å gjere relokeringa pålitleg (djupare drvfs-feilsøking, privilegert `mount --bind`, eller eit hybrid container-for-relokering-pluss-native-for-alt-anna-oppsett) er ikkje starta.
+0. **(UTFØRT, no med ein STADFESTA pålitleg relokeringsmekanisme klar til implementering — sjå "Del 2b"/"Del 2c") Relokér `node_modules` (og pnpm sin store-dir) til native ext4-disk, behald sjølve repoet på `/mnt/c`.** Godkjent eksplisitt av brukaren ("utfør tiltak 0 med nativet node/pnpm-oppsett på WSL2-verten") og implementert via `scripts/setup-native-dev.sh` + `scripts/check-native-dev-requirements.sh`. Native Node/pnpm-installasjonen sjølv (utan relokering) ER pålitleg og gir ei stadfesta, uvilkårleg forbetring (11-14s vs 226-228s install) og er verande installert. **Symlink-relokeringa som faktisk ligg i `setup-native-dev.sh` i dag er UPÅLITELEG** (1 suksess av 9 reelle forsøk, rotårsak ikkje forstått) og prøver 3× med ekte verifikasjon før han fell reint attende. **Del 2c testa erstattinga (`mount --bind` via unprivilegert `unshare`-namespace, ingen `sudo` naudsynt) og fekk 5 av 5 uavhengige, ferske forsøk til å lukkast** — klart meir pålitleg enn symlinken, men **ikkje enno bygd inn i `setup-native-dev.sh`** (krev eit script-design som held mount+install+test i éin samanhengande namespace-økt, sjå Del 2c "Tilråding" for detaljar og kvifor dette ikkje er eit trivielt copy-paste-byte). Å faktisk byte ut mekanismen i scriptet er difor eit separat, ikkje-godkjent Del 3-deltiltak.
 1. **(Høg gevinst, container-arbeid, delvis overlappande med kandidat 0 — same underliggjande innsikt, snevrare tiltak) Persistent pnpm-store-volum for containerkall**, i staden for ein fersk in-container store kvar gong — monter ein namngitt podman-volum for `.pnpm-store` mellom køyringar, slik at berre FØRSTE `pnpm install` betaler full kaldstart-kostnad. Gjeld like mykje for `pre-push` som for manuelle containerkall, sidan begge no er stadfesta å bruke same containermetode (fakta-punkt 4). Del 2 stadfesta at install åleine tek 228s — eit reelt, stort tal å spare på kvar gjentekne køyring.
 2. **(Nedgradert — treng vidare diagnose, ikkje ein trygg antatt vinnar) Juster talet på parallelle jsdom-kaldstartar** — det VART testa (`--maxWorkers=1`), og resultatet var eit 23+ minutts hovudlås utan eitt ferdig testfil, ikkje ein forbetring. Før dette kan foreslåast som eit konkret tiltak, trengst finmaska oppfølging (t.d. `--maxWorkers=2` eller `4` med ein eksplisitt kortare timeout for å unngå eit nytt langvarig hovudlås) — sjå "Del 2 — Resultat" for dei tre ikkje-stadfesta hypotesane om kvifor serialisering gjekk gale.
 3. **(Moderat gevinst, men same atterhald som kandidat 2) Utvid `environmentMatchGlobs`** i `packages/core/vitest.config.ts` til fleire reint-logiske testfilbaner enn berre `src/io/**`, basert på faktiske data frå Del 2 om kva filer faktisk trigga jsdom-relatert treigheit/flaks. Del 2 fann derimot at éin av dei 17 råka filene (`round-trip.test.ts`) alt køyrer i `node`-miljø (ikkje jsdom) og likevel feila éin gong — dette nyanserer kor stor gevinst denne kandidaten realistisk kan gje, sidan ikkje alt av feila nødvendigvis er jsdom-spesifikke.

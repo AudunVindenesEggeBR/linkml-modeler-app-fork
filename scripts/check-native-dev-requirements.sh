@@ -167,7 +167,32 @@ check_symlink_crossing() {
   fi
 }
 
-# ── 6. Existing native setup, if any (informational) ───────────────────────
+# ── 6. Playwright/Chromium system shared libraries (needed for local E2E,
+#      including via .githooks/pre-push's now-native-capable E2E step) ─────
+# Not part of node/pnpm relocation, but discovered as a hard local-E2E
+# blocker while verifying the pre-push `mount --bind` change (see
+# specs/backlog/test-timing-instrumentation-and-reliability.md, "Del 2c" /
+# "Tilråding"). `playwright install` (without `--with-deps`) only downloads
+# the browser binary -- it does NOT install these OS-level shared library
+# dependencies, so a fresh minimal host (this one included, Ubuntu 26.04)
+# needs them installed separately, once, with sudo.
+
+check_playwright_system_deps() {
+  local pkgs=(libnspr4 libnss3 libasound2t64)
+  local missing=()
+  for pkg in "${pkgs[@]}"; do
+    dpkg -s "$pkg" >/dev/null 2>&1 || missing+=("$pkg")
+  done
+  if (( ${#missing[@]} > 0 )); then
+    fail "Missing system packages for headless Chromium (Playwright E2E): ${missing[*]}"
+    fix "sudo apt-get update && sudo apt-get install -y libnspr4 libnss3 libasound2t64"
+    info "Confirmed via ldd on the downloaded chrome-headless-shell binary + apt-get download/dpkg -c package inspection (2026-09-10, Ubuntu 26.04): libnspr4 -> libnspr4.so, libnss3 -> libnss3.so AND libnssutil3.so (bundled together, not a separate package), libasound2t64 -> libasound.so.2 (the t64 name, not libasound2, on this Ubuntu version)."
+  else
+    ok "Playwright/Chromium system packages present (libnspr4, libnss3, libasound2t64)."
+  fi
+}
+
+# ── 7. Existing native setup, if any (informational) ───────────────────────
 
 check_existing_setup() {
   if [[ -L "$REPO_ROOT/node_modules" ]]; then
@@ -195,6 +220,7 @@ check_pnpm
 check_repo_mount
 check_home_mount
 check_symlink_crossing
+check_playwright_system_deps
 check_existing_setup
 echo
 

@@ -4,11 +4,53 @@
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
+REPO="$(pwd)"
 
-echo "▶ pre-push: running unit tests..."
-scripts/time-cmd.sh pre-push-unit -- pnpm --filter @linkml-editor/core test --run
+run_checks() {
+  echo "▶ pre-push: running unit tests..."
+  scripts/time-cmd.sh pre-push-unit -- pnpm --filter @linkml-editor/core test
 
-echo "▶ pre-push: running E2E tests..."
-scripts/time-cmd.sh pre-push-e2e -- pnpm --filter @linkml-editor/web test:e2e
+  echo "▶ pre-push: running E2E tests..."
+  scripts/time-cmd.sh pre-push-e2e -- pnpm --filter @linkml-editor/web test:e2e
+}
+
+# node_modules relocation to native disk (see
+# specs/backlog/test-timing-instrumentation-and-reliability.md, "Del 2c"):
+# bind-mounting node_modules onto native ext4 eliminates the vitest
+# worker-timeout flake and cuts local test time by an order of magnitude on
+# this WSL2/drvfs host, confirmed 5/5 reliable via unprivileged user+mount
+# namespaces (`unshare --mount --user --map-root-user`) -- no sudo needed.
+# Only applied to paths that are currently plain directories; a path that's
+# already a symlink (from scripts/setup-native-dev.sh's separate,
+# interactive-dev-only relocation) is left untouched, since it already
+# points off the slow disk and there's nothing to gain by re-mounting it.
+NM_PATHS=(node_modules packages/core/node_modules packages/web/node_modules)
+NEEDS_BIND=""
+for p in "${NM_PATHS[@]}"; do
+  [ -L "$REPO/$p" ] || NEEDS_BIND="$NEEDS_BIND $p"
+done
+
+if [ -n "$NEEDS_BIND" ] && command -v unshare >/dev/null 2>&1 && unshare --mount --user --map-root-user true 2>/dev/null; then
+  export REPO NEEDS_BIND
+  export -f run_checks
+  unshare --mount --user --map-root-user bash -c '
+    set -euo pipefail
+    cd "$REPO"
+    NATIVE_NM="$HOME/.cache/linkml-editor-pre-push-nm"
+    for p in $NEEDS_BIND; do
+      native="$NATIVE_NM/$(echo "$p" | tr "/" "_")"
+      mkdir -p "$native" "$p"
+      mount --bind "$native" "$p"
+    done
+    scripts/time-cmd.sh pre-push-install -- pnpm install --frozen-lockfile
+    run_checks
+  '
+else
+  # Fallback: unprivileged mount namespaces unavailable, or node_modules is
+  # already fully relocated via symlink (nothing left to bind-mount) -- just
+  # run normally.
+  pnpm install --frozen-lockfile
+  run_checks
+fi
 
 echo "✓ pre-push checks passed (timing: test-timing/containers.log)"
