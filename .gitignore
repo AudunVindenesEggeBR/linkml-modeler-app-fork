@@ -13,6 +13,7 @@ release/
 coverage/
 test-results/
 playwright-report/
+test-timing/
 
 # Claude Code local state (but share project-level skills/hooks/settings via git)
 .claude/*

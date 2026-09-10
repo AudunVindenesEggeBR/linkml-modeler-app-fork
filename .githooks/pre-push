@@ -6,9 +6,9 @@ set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
 echo "▶ pre-push: running unit tests..."
-pnpm --filter @linkml-editor/core test --run
+scripts/time-cmd.sh pre-push-unit -- pnpm --filter @linkml-editor/core test --run
 
 echo "▶ pre-push: running E2E tests..."
-pnpm --filter @linkml-editor/web test:e2e
+scripts/time-cmd.sh pre-push-e2e -- pnpm --filter @linkml-editor/web test:e2e
 
-echo "✓ pre-push checks passed"
+echo "✓ pre-push checks passed (timing: test-timing/containers.log)"

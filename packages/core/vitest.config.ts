@@ -16,6 +16,12 @@ export default defineConfig({
       ['src/io/**/*.test.ts', 'node'],
     ],
     setupFiles: ['./src/__tests__/setup.ts'],
+    // Per-test/per-file durations for diagnosing full-suite wall-clock time
+    // and correlating flaky failures with slow phases (see
+    // specs/backlog/test-timing-instrumentation-and-reliability.md). Written
+    // to the repo-root test-timing/ dir (gitignored), one timestamped file
+    // per run so repeated runs can be compared rather than overwritten.
+    reporters: ['default', ['json', { outputFile: `../../test-timing/vitest-core-${Date.now()}.json` }]],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html', 'lcov'],
