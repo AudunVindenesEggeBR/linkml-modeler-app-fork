@@ -132,6 +132,15 @@ podman-compose -f deploy/web/docker-compose.yml up --build -d
 
 Opens at [http://localhost:8080](http://localhost:8080) (rootless Podman can't bind port 80 without extra host config — override with `WEB_PORT=<port>` if 8080 is taken). See the [Developer Guide](https://adamlabadorf.github.io/linkml-modeler-app/development) for subpath/reverse-proxy deployment and the Docker-only equivalent.
 
+**Redeploying after a code change — `up --build` alone is not enough.** `podman-compose` (confirmed on version 1.5.0) builds a fresh image but does **not** reliably recreate the running container against it — the old container silently keeps running on the old image, so the app in your browser is unchanged even though the build succeeded. This reproduces with `--build` alone and with `--force-recreate` alike; only a full teardown reliably picks up the new image:
+
+```bash
+podman-compose -f deploy/web/docker-compose.yml down
+podman-compose -f deploy/web/docker-compose.yml up --build -d
+```
+
+If a rebuild doesn't seem to change anything in the browser, check this first: `podman inspect <container> --format '{{.Image}}'` vs. `podman inspect <image>:latest --format '{{.Id}}'` — a mismatch means you're looking at the stale container, not a caching or code issue.
+
 ---
 
 ## Documentation

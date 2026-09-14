@@ -95,6 +95,15 @@ The default host port is **8080**, not 80 — rootless Podman can't bind port 80
 
 If you already have Node/pnpm installed and prefer the old flow, it still works: build with `pnpm --filter @linkml-editor/web build` first, then `up --build` as above — the Dockerfile only rebuilds `packages/web/dist` itself, it doesn't require a pre-built one.
 
+**Redeploying after a code change — `up --build` alone is not enough.** `podman-compose` (confirmed on version 1.5.0) builds a fresh image but does **not** reliably recreate the already-running container against it — the old container keeps running on the old image, silently, so nothing changes in the browser even though the build succeeded. Confirmed to reproduce with `--build` alone and with `--force-recreate` alike (verified via `podman inspect <container> --format '{{.Image}}'` vs. `podman inspect <image>:latest --format '{{.Id}}'` disagreeing after a rebuild). Only a full teardown reliably picks up the new image:
+
+```bash
+podman-compose -f deploy/web/docker-compose.yml down
+podman-compose -f deploy/web/docker-compose.yml up --build -d
+```
+
+If a rebuild doesn't seem to change anything, check this before suspecting a caching or code issue: compare the container's image ID against `<service>:latest`'s image ID as above — a mismatch means the stale container is still serving requests.
+
 ### Serving behind a reverse proxy at a subpath
 
 When your reverse proxy routes the app under a URL prefix (e.g. `https://your-domain.com/linkml-editor/`), three values must agree: the Vite asset base, the nginx location prefix, and the CORS proxy URL the app is built with. All three are passed straight through to the container build as environment variables — set them before `up --build`, nothing needs building on the host first:
