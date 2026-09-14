@@ -3,6 +3,7 @@ import { Handle, Position, NodeProps } from 'reactflow';
 import type { CanvasNodeData } from '../store/slices/canvasSlice.js';
 import type { EnumDefinition } from '../model/index.js';
 import { Diamond } from '../ui/icons/index.js';
+import { ENUM_VALUE_LIMIT } from './nodeLimits.js';
 
 export interface EnumNodeData extends CanvasNodeData {
   entityType: 'enum';
@@ -12,7 +13,7 @@ export interface EnumNodeData extends CanvasNodeData {
   importSourceFile?: string; // Source file path — set when imported: true
 }
 
-const VALUE_LIMIT = 12;
+const VALUE_LIMIT = ENUM_VALUE_LIMIT;
 
 function EnumNode({ data, selected }: NodeProps<EnumNodeData>) {
   const { enumDef, collapsed, imported } = data;
@@ -68,7 +69,9 @@ function EnumNode({ data, selected }: NodeProps<EnumNodeData>) {
             <div style={styles.moreRow}>+{hiddenCount} more…</div>
           )}
           {visibleValues.length === 0 && values.length === 0 && (
-            <div style={styles.emptyRow}>no values</div>
+            <div style={styles.emptyRow}>
+              {enumDef.reachableFrom ? 'dynamic (reachable_from)' : 'no values'}
+            </div>
           )}
         </div>
       )}
@@ -169,6 +172,9 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '4px 10px',
     color: 'var(--color-border-strong)',
     fontStyle: 'italic',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
   },
 };
 

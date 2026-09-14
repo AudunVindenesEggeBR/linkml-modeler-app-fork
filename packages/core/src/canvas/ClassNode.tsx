@@ -6,6 +6,7 @@ import type { RangeEdgesMode } from '../store/slices/uiSlice.js';
 import { useAppStore } from '../store/index.js';
 import { ArrowUp, Hexagon, Plus } from '../ui/icons/index.js';
 import { classSlotMidY } from './nodeGeometry.js';
+import { CLASS_SLOT_LIMIT } from './nodeLimits.js';
 
 export interface ResolvedSlot {
   slot: SlotDefinition;
@@ -26,7 +27,7 @@ export interface ClassNodeData extends CanvasNodeData {
   rangeEdgesMode?: RangeEdgesMode; // Controls range rendering: show as edges, inline chips, or auto
 }
 
-const SLOT_LIMIT_EXPANDED = 20;
+const SLOT_LIMIT_EXPANDED = CLASS_SLOT_LIMIT;
 
 function SlotRow({
   resolved,

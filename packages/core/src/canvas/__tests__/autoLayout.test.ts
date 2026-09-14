@@ -103,6 +103,83 @@ describe('estimateClassNodeSize', () => {
   });
 });
 
+// Regression guards for specs/backlog/layout-calculation-audit-2026-09-14.md
+// Funn 1 (missing SLOT_LIMIT_EXPANDED cap) and Funn 2 (inherited slots not
+// counted).
+describe('estimateClassNodeSize slot-count cap (Funn 1)', () => {
+  it('caps the estimate at CLASS_SLOT_LIMIT (20) visible rows plus one "+N more" row', () => {
+    // Matches what ClassNode.tsx actually renders: 20 visible rows + 1
+    // "+N more" row, regardless of how far over 20 the real count is.
+    const at20 = estimateClassNodeSize(classWithAttributes('At20', 20));
+    const at21 = estimateClassNodeSize(classWithAttributes('At21', 21));
+    const at100 = estimateClassNodeSize(classWithAttributes('At100', 100));
+    // Crossing the limit adds exactly one row's worth of height (the "+more" row).
+    expect(at21.height).toBe(at20.height + 23);
+    // Going further past the limit adds nothing more -- still just one "+more" row.
+    expect(at100.height).toBe(at21.height);
+  });
+
+  it('does not grow unboundedly past the cap (regression: previously uncapped, ~1800px off for 100 attributes)', () => {
+    const { height } = estimateClassNodeSize(classWithAttributes('Huge', 100));
+    // 20 visible + 1 "+more" row = 21 rows worth, well under what an
+    // uncapped 100-row estimate would have produced.
+    expect(height).toBeLessThan(700);
+  });
+});
+
+describe('estimateClassNodeSize inherited slots via is_a/mixins (Funn 2)', () => {
+  function schemaWithParentChild(parentAttrCount: number, childAttrCount: number): LinkMLSchema {
+    const schema = emptySchema('TestSchema', 'https://example.org/test', 'test');
+    schema.classes['Parent'] = classWithAttributes('Parent', parentAttrCount);
+    schema.classes['Child'] = classWithAttributes('Child', childAttrCount, 'Parent');
+    return schema;
+  }
+
+  it('does not count inherited slots when schema is omitted (backward compatible)', () => {
+    const schema = schemaWithParentChild(5, 3);
+    const withoutSchema = estimateClassNodeSize(schema.classes['Child']);
+    const withSchema = estimateClassNodeSize(schema.classes['Child'], schema);
+    // Passing schema adds the 5 inherited rows from Parent; omitting it doesn't.
+    expect(withSchema.height).toBeGreaterThan(withoutSchema.height);
+  });
+
+  it('counts is_a-inherited attributes toward the height estimate when schema is supplied', () => {
+    const shallow = schemaWithParentChild(0, 3);
+    const deep = schemaWithParentChild(10, 3);
+    const shallowHeight = estimateClassNodeSize(shallow.classes['Child'], shallow).height;
+    const deepHeight = estimateClassNodeSize(deep.classes['Child'], deep).height;
+    expect(deepHeight).toBeGreaterThan(shallowHeight);
+  });
+
+  it('counts mixin-inherited attributes toward the height estimate when schema is supplied', () => {
+    const schema = emptySchema('TestSchema', 'https://example.org/test', 'test');
+    schema.classes['Mixin'] = classWithAttributes('Mixin', 6);
+    const withMixin = classWithAttributes('WithMixin', 2);
+    withMixin.mixins = ['Mixin'];
+    schema.classes['WithMixin'] = withMixin;
+    const withoutMixinContext = estimateClassNodeSize(withMixin);
+    const withMixinContext = estimateClassNodeSize(withMixin, schema);
+    expect(withMixinContext.height).toBeGreaterThan(withoutMixinContext.height);
+  });
+
+  it('deduplicates a slot name that is both declared locally and inherited (counts once)', () => {
+    const schema = emptySchema('TestSchema', 'https://example.org/test', 'test');
+    schema.classes['Parent'] = classWithAttributes('Parent', 3); // attr_0, attr_1, attr_2
+    const child = classWithAttributes('Child', 3, 'Parent'); // also attr_0, attr_1, attr_2 (overridden locally)
+    schema.classes['Child'] = child;
+    const { height } = estimateClassNodeSize(child, schema);
+    // 3 unique names total (not 6) -- same as a class with 3 own attributes and no parent.
+    const equivalent = estimateClassNodeSize(classWithAttributes('Equivalent', 3, 'Parent'));
+    expect(height).toBe(equivalent.height);
+  });
+
+  it('does not throw when is_a points at a non-existent class', () => {
+    const schema = emptySchema('TestSchema', 'https://example.org/test', 'test');
+    schema.classes['Orphan'] = classWithAttributes('Orphan', 2, 'DoesNotExist');
+    expect(() => estimateClassNodeSize(schema.classes['Orphan'], schema)).not.toThrow();
+  });
+});
+
 // ── estimateEnumNodeSize ─────────────────────────────────────────────────────
 
 describe('estimateEnumNodeSize', () => {

@@ -12,6 +12,7 @@ import ELK from 'elkjs/lib/elk.bundled.js';
 import type { ElkNode, ElkExtendedEdge } from 'elkjs/lib/elk-api.js';
 import type { LinkMLSchema, CanvasLayout, EdgeLayout, ClassDefinition, EnumDefinition, SlotDefinition } from '../model/index.js';
 import type { ImportedEntity } from '../io/importResolver.js';
+import { CLASS_SLOT_LIMIT, ENUM_VALUE_LIMIT } from './nodeLimits.js';
 
 // Node dimensions used for layout calculations. ClassNode/EnumNode have no
 // fixed height -- they grow with the number of attributes/values rendered
@@ -40,26 +41,99 @@ const HEADER_H = 34;
 const ISA_ROW_H = 24; // ClassNode's extra is_a row, only present when classDef.isA is set
 const BODY_PADDING = 8;
 const ROW_H = 23;
-const ENUM_VALUE_LIMIT = 12; // EnumNode caps visible rows and adds a "+N more" row beyond this
+
+/**
+ * Recursively collects slot NAMES inherited from a class's is_a ancestors and
+ * mixins (not its own direct attributes/slots -- see estimateClassNodeSize's
+ * caller for those). Mirrors deriveGraph.ts's gatherAncestorSlots traversal
+ * (same is_a-chain-then-mixins order, same `visited` cycle guard), but
+ * returns bare names rather than full ResolvedSlot objects -- all
+ * estimateClassNodeSize needs is a count, and gatherAncestorSlots isn't
+ * exported (and returns a type that lives in ClassNode.tsx, which this
+ * module has no reason to depend on). Duplicated rather than shared to avoid
+ * that coupling; keep the traversal logic in sync if either changes.
+ */
+function gatherAncestorSlotNames(
+  className: string,
+  schema: LinkMLSchema,
+  allSchemaSlots: Record<string, SlotDefinition>,
+  visited: Set<string> = new Set()
+): Set<string> {
+  const classDef = schema.classes[className];
+  if (!classDef) return new Set();
+
+  const result = new Set<string>();
+
+  const addOwnSlotNames = (ancDef: ClassDefinition) => {
+    for (const name of Object.keys(ancDef.attributes)) result.add(name);
+    for (const name of ancDef.slots) {
+      if (allSchemaSlots[name] ?? schema.slots?.[name]) result.add(name);
+    }
+  };
+
+  if (classDef.isA && !visited.has(classDef.isA)) {
+    const parentDef = schema.classes[classDef.isA];
+    if (parentDef) {
+      visited.add(classDef.isA);
+      addOwnSlotNames(parentDef);
+      for (const name of gatherAncestorSlotNames(classDef.isA, schema, allSchemaSlots, visited)) {
+        result.add(name);
+      }
+    }
+  }
+
+  for (const mixinName of classDef.mixins) {
+    if (visited.has(mixinName)) continue;
+    const mixinDef = schema.classes[mixinName];
+    if (!mixinDef) continue;
+    visited.add(mixinName);
+    addOwnSlotNames(mixinDef);
+    for (const name of gatherAncestorSlotNames(mixinName, schema, allSchemaSlots, visited)) {
+      result.add(name);
+    }
+  }
+
+  return result;
+}
 
 /**
  * Estimate a class node's rendered size from its actual attribute count,
  * rather than assuming a fixed box -- see the module-level comment on
  * CLASS_H for why a fixed height caused overlapping nodes.
  *
- * Counts both classDef.attributes (inline slots) and classDef.slots
- * (schema-level slot references, resolved by name elsewhere) -- ClassNode.tsx
- * renders resolvedSlots, which is built from both sources (see
- * deriveGraph.ts), so counting only one under-estimates height for classes
- * that declare their slots the schema-level way. Does NOT count slots
- * inherited via is_a/mixins -- classDef alone has no schema/allSchemaSlots
- * context to resolve an ancestor chain with (see the three call sites in
- * this file, which each already have that context in scope, if this is
- * ever extended to cover inheritance too).
+ * Counts classDef.attributes (inline slots), classDef.slots (schema-level
+ * slot references), and -- when `schema` is supplied -- slots inherited via
+ * is_a/mixins, deduplicated by name (a slot overridden locally, or appearing
+ * in both attributes and slots, counts once). This matches ClassNode.tsx's
+ * resolvedSlots exactly (see deriveGraph.ts), which is built from all three
+ * sources. `schema`/`allSchemaSlots` are optional and omitted default to
+ * "own slots only" (no inheritance) for backward compatibility -- callers
+ * that don't have schema context in scope still get a correct, if partial,
+ * estimate rather than being forced to plumb it through.
+ *
+ * Also caps the count at CLASS_SLOT_LIMIT, exactly like ClassNode.tsx caps
+ * rendering at that many visible rows (plus one "+N more" row beyond it) --
+ * see specs/done/layout-calculation-audit-2026-09-14.md for the bug this
+ * fixes (no cap here previously silently over-estimated height by 1800px+
+ * for a 100-attribute class).
  */
-export function estimateClassNodeSize(classDef: ClassDefinition): { width: number; height: number } {
-  const attrCount = Object.keys(classDef.attributes).length + classDef.slots.length;
-  const height = HEADER_H + (classDef.isA ? ISA_ROW_H : 0) + BODY_PADDING + attrCount * ROW_H;
+export function estimateClassNodeSize(
+  classDef: ClassDefinition,
+  schema?: LinkMLSchema,
+  allSchemaSlots: Record<string, SlotDefinition> = {}
+): { width: number; height: number } {
+  const ownSlotNames = new Set<string>([
+    ...Object.keys(classDef.attributes),
+    ...classDef.slots,
+  ]);
+  if (schema) {
+    for (const name of gatherAncestorSlotNames(classDef.name, schema, allSchemaSlots)) {
+      ownSlotNames.add(name);
+    }
+  }
+  const attrCount = ownSlotNames.size;
+  const visibleRows = Math.min(attrCount, CLASS_SLOT_LIMIT) + (attrCount > CLASS_SLOT_LIMIT ? 1 : 0);
+  const height = HEADER_H + (classDef.isA ? ISA_ROW_H : 0) + BODY_PADDING + visibleRows * ROW_H;
   return { width: CLASS_W, height: Math.max(height, CLASS_H) };
 }
 
@@ -210,7 +284,7 @@ export async function runAutoLayout(
   for (const [className, classDef] of Object.entries(schema.classes)) {
     elkNodes.push({
       id: className,
-      ...estimateClassNodeSize(classDef),
+      ...estimateClassNodeSize(classDef, schema, allSchemaSlots),
     });
   }
 
@@ -233,7 +307,7 @@ export async function runAutoLayout(
     if (localIds.has(entity.name)) continue; // skip if local definition exists
     allImportedIds.add(entity.name);
     const size = entity.type === 'class'
-      ? estimateClassNodeSize(entity.schema.classes[entity.name])
+      ? estimateClassNodeSize(entity.schema.classes[entity.name], entity.schema, allSchemaSlots)
       : estimateEnumNodeSize(entity.schema.enums[entity.name]);
     elkNodes.push({ id: entity.name, ...size });
   }
@@ -355,7 +429,7 @@ export async function runAutoLayout(
     const result = await elk.layout(elkGraph);
     const layout = elkResultToLayout(result);
     if (hideTreeRootRangeEdges) {
-      repositionTreeRootNodesLeft(schema, layout, options.layerSpacing);
+      repositionTreeRootNodesLeft(schema, layout, options.layerSpacing, allSchemaSlots);
     }
     return layout;
   } catch (err) {
@@ -434,7 +508,8 @@ function elkResultToLayout(elkNode: ElkNode): CanvasLayout {
 function repositionTreeRootNodesLeft(
   schema: LinkMLSchema,
   layout: CanvasLayout,
-  layerSpacing: number
+  layerSpacing: number,
+  allSchemaSlots: Record<string, SlotDefinition>
 ): void {
   const treeRootNames = Object.entries(schema.classes)
     .filter(([, def]) => def.treeRoot === true)
@@ -451,7 +526,7 @@ function repositionTreeRootNodesLeft(
 
   let y = minY;
   for (const name of treeRootNames) {
-    const { width, height } = estimateClassNodeSize(schema.classes[name]);
+    const { width, height } = estimateClassNodeSize(schema.classes[name], schema, allSchemaSlots);
     layout.nodes[name] = { x: minX - width - layerSpacing, y };
     y += height + layerSpacing;
   }
