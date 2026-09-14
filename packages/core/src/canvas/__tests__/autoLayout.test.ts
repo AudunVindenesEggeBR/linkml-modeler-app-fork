@@ -58,6 +58,49 @@ describe('estimateClassNodeSize', () => {
     const { width } = estimateClassNodeSize(classWithAttributes('Whatever', 5));
     expect(width).toBe(320);
   });
+
+  // Regression guard for the bug reported against
+  // enhetsregisteret-frivilligorganisasjonapi-schema.yaml: a class that
+  // declares its slots at the schema level (classDef.slots, resolved by name
+  // from a shared slots: section) instead of inline (classDef.attributes)
+  // rendered 13 real rows but was estimated at the 120px floor, since only
+  // classDef.attributes was counted -- see
+  // specs/done/estimateclassnodesize-missing-schema-level-slots.md.
+  function classWithSchemaSlots(name: string, slotCount: number) {
+    const classDef = emptyClassDefinition(name);
+    classDef.slots = Array.from({ length: slotCount }, (_, i) => `slot_${i}`);
+    return classDef;
+  }
+
+  it('grows height with classDef.slots (schema-level slot reference) count, not just attributes', () => {
+    const small = estimateClassNodeSize(classWithSchemaSlots('Small', 2));
+    const large = estimateClassNodeSize(classWithSchemaSlots('Large', 15));
+    expect(large.height).toBeGreaterThan(small.height);
+  });
+
+  it('does not stay at the 120px floor for a class with 0 attributes but many schema-level slots', () => {
+    // Matches the real reported case: FrivilligOrganisasjon had 0 inline
+    // attributes and 13 schema-level slots, and was stuck at the floor.
+    const { height } = estimateClassNodeSize(classWithSchemaSlots('FrivilligOrganisasjon', 13));
+    expect(height).toBeGreaterThan(120);
+  });
+
+  it('sums classDef.attributes and classDef.slots when a class mixes both declaration styles', () => {
+    const attributesOnly = estimateClassNodeSize(classWithAttributes('AttrsOnly', 5));
+    const mixed = classWithSchemaSlots('Mixed', 5);
+    mixed.attributes = classWithAttributes('Mixed', 5).attributes;
+    // 5 attributes + 5 schema-level slots = 10 total rows, taller than either alone.
+    expect(estimateClassNodeSize(mixed).height).toBeGreaterThan(attributesOnly.height);
+  });
+
+  it('is unaffected for classes that only use inline attributes (regression check)', () => {
+    const classDef = classWithAttributes('AttrsOnly', 7);
+    expect(classDef.slots).toHaveLength(0); // sanity: emptyClassDefinition() starts with slots: []
+    const withSlots = { ...classDef, slots: ['extra'] };
+    // Adding a schema-level slot must increase the estimate -- proves the
+    // attributes-only case wasn't already (silently) counting something else.
+    expect(estimateClassNodeSize(withSlots).height).toBeGreaterThan(estimateClassNodeSize(classDef).height);
+  });
 });
 
 // ── estimateEnumNodeSize ─────────────────────────────────────────────────────

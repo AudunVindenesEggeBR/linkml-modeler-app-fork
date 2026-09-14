@@ -46,9 +46,19 @@ const ENUM_VALUE_LIMIT = 12; // EnumNode caps visible rows and adds a "+N more" 
  * Estimate a class node's rendered size from its actual attribute count,
  * rather than assuming a fixed box -- see the module-level comment on
  * CLASS_H for why a fixed height caused overlapping nodes.
+ *
+ * Counts both classDef.attributes (inline slots) and classDef.slots
+ * (schema-level slot references, resolved by name elsewhere) -- ClassNode.tsx
+ * renders resolvedSlots, which is built from both sources (see
+ * deriveGraph.ts), so counting only one under-estimates height for classes
+ * that declare their slots the schema-level way. Does NOT count slots
+ * inherited via is_a/mixins -- classDef alone has no schema/allSchemaSlots
+ * context to resolve an ancestor chain with (see the three call sites in
+ * this file, which each already have that context in scope, if this is
+ * ever extended to cover inheritance too).
  */
 export function estimateClassNodeSize(classDef: ClassDefinition): { width: number; height: number } {
-  const attrCount = Object.keys(classDef.attributes).length;
+  const attrCount = Object.keys(classDef.attributes).length + classDef.slots.length;
   const height = HEADER_H + (classDef.isA ? ISA_ROW_H : 0) + BODY_PADDING + attrCount * ROW_H;
   return { width: CLASS_W, height: Math.max(height, CLASS_H) };
 }
