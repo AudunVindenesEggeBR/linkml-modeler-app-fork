@@ -495,12 +495,12 @@ function SchemaCanvasInner() {
     if (hasLayoutData) {
       void Promise.resolve(activeSchemaFile.canvasLayout).then(setLocalLayout);
     } else {
-      void runAutoLayout(activeSchemaFile.schema, {}, ghostEntities, hiddenEdgeTypes, hideTreeRootRangeEdges).then((layout) => {
+      void runAutoLayout(activeSchemaFile.schema, {}, ghostEntities, hiddenEdgeTypes, hideTreeRootRangeEdges, allSchemaSlots).then((layout) => {
         setLocalLayout(layout);
         setTimeout(() => fitView({ padding: 0.1, duration: 400 }), 100);
       });
     }
-  }, [activeSchemaFile, ghostEntities, hiddenEdgeTypes, hideTreeRootRangeEdges, fitView]);
+  }, [activeSchemaFile, ghostEntities, hiddenEdgeTypes, hideTreeRootRangeEdges, allSchemaSlots, fitView]);
 
   useEffect(() => {
     layoutRanRef.current = false;
@@ -526,7 +526,7 @@ function SchemaCanvasInner() {
     if (!hasUnsaved) return;
 
     // Re-run auto-layout to incorporate the new imported nodes
-    runAutoLayout(activeSchemaFile.schema, {}, ghostEntities, hiddenEdgeTypes, hideTreeRootRangeEdges).then((layout) => {
+    runAutoLayout(activeSchemaFile.schema, {}, ghostEntities, hiddenEdgeTypes, hideTreeRootRangeEdges, allSchemaSlots).then((layout) => {
       // Merge: keep existing user-adjusted positions, add new imported positions
       setLocalLayout((prev) => ({
         nodes: { ...layout.nodes, ...prev.nodes },
@@ -534,7 +534,7 @@ function SchemaCanvasInner() {
       }));
       setTimeout(() => fitView({ padding: 0.1, duration: 400 }), 150);
     });
-  }, [activeSchemaFile, ghostEntities, hiddenEdgeTypes, hideTreeRootRangeEdges, fitView]);
+  }, [activeSchemaFile, ghostEntities, hiddenEdgeTypes, hideTreeRootRangeEdges, allSchemaSlots, fitView]);
 
   // Zoom to node when a focus request is pending
   useEffect(() => {
@@ -584,7 +584,8 @@ function SchemaCanvasInner() {
       },
       ghostEntities,
       hiddenEdgeTypes,
-      hideTreeRootRangeEdges
+      hideTreeRootRangeEdges,
+      allSchemaSlots
     );
     if (activeViewId) {
       updateViewLayout(activeViewId, { nodes: layout.nodes, viewport: layout.viewport });
@@ -595,7 +596,7 @@ function SchemaCanvasInner() {
     }
     setTimeout(() => fitView({ padding: 0.1, duration: 400 }), 100);
     scheduleManifestWrite();
-  }, [activeSchemaFile, ghostEntities, hiddenEdgeTypes, hideTreeRootRangeEdges, fitView, scheduleManifestWrite, activeViewId, views, focusMode, subsetLayouts, updateViewLayout, updateSubsetLayout]);
+  }, [activeSchemaFile, ghostEntities, hiddenEdgeTypes, hideTreeRootRangeEdges, allSchemaSlots, fitView, scheduleManifestWrite, activeViewId, views, focusMode, subsetLayouts, updateViewLayout, updateSubsetLayout]);
 
   const handleAutoLayout = useCallback(() => {
     void applyAutoLayout(layoutDirection, layeringStrategy, edgeRouting, nodePlacementStrategy, spacingPreset);

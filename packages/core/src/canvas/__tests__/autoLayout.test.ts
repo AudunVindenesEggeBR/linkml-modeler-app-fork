@@ -455,3 +455,63 @@ describe('runAutoLayout tree_root leftmost repositioning', () => {
     expect(boxesOverlap(box1, box2)).toBe(false);
   });
 });
+
+describe('runAutoLayout schema-level slots (classDef.slots) range edges', () => {
+  // A references B via a schema-level slots: entry (classDef.slots), not an
+  // inline attribute -- the pattern used throughout
+  // enhetsregisteret-frivilligorganisasjonapi-schema.yaml, where it left every
+  // non-tree_root class as an isolated, undirected layout component because
+  // this loop didn't exist yet.
+  function schemaLevelSlotSchema(): LinkMLSchema {
+    const schema = emptySchema('TestSchema', 'https://example.org/test', 'test');
+    schema.slots['ref'] = { ...emptySlotDefinition('ref'), range: 'B' };
+    const a = emptyClassDefinition('A');
+    a.slots = ['ref'];
+    schema.classes['A'] = a;
+    schema.classes['B'] = emptyClassDefinition('B');
+    return schema;
+  }
+
+  it('feeds a range edge into the layout graph when the slot is declared at schema level, not inline', async () => {
+    const layout = await runAutoLayout(schemaLevelSlotSchema(), {}, [], new Set());
+    // A -> B via range should place B below A (LONGEST_PATH default), same as
+    // if the slot had been declared inline via classDef.attributes.
+    expect(layout.nodes['B'].y).toBeGreaterThan(layout.nodes['A'].y);
+  });
+
+  it('respects a slot_usage range override for schema-level slots', async () => {
+    const schema = schemaLevelSlotSchema();
+    schema.classes['C'] = emptyClassDefinition('C');
+    // Override A's 'ref' slot to point at C instead of the schema-level default (B)
+    schema.classes['A'].slotUsage['ref'] = { range: 'C' };
+
+    const layout = await runAutoLayout(schema, {}, [], new Set());
+    expect(layout.nodes['C'].y).toBeGreaterThan(layout.nodes['A'].y);
+  });
+
+  it('resolves schema-level slots from allSchemaSlots (cross-schema import) when absent from the local schema', async () => {
+    const schema = emptySchema('TestSchema', 'https://example.org/test', 'test');
+    const a = emptyClassDefinition('A');
+    a.slots = ['importedRef'];
+    schema.classes['A'] = a;
+    schema.classes['B'] = emptyClassDefinition('B');
+    // 'importedRef' is NOT in schema.slots -- only in allSchemaSlots, as if it
+    // came from an imported schema (see SchemaCanvas.tsx's allSchemaSlots merge).
+    const allSchemaSlots = { importedRef: { ...emptySlotDefinition('importedRef'), range: 'B' } };
+
+    const layout = await runAutoLayout(schema, {}, [], new Set(), false, allSchemaSlots);
+    expect(layout.nodes['B'].y).toBeGreaterThan(layout.nodes['A'].y);
+  });
+
+  it('does not crash when a schema-level slot reference cannot be resolved anywhere', async () => {
+    const schema = emptySchema('TestSchema', 'https://example.org/test', 'test');
+    const a = emptyClassDefinition('A');
+    a.slots = ['missingSlot']; // not defined in schema.slots or allSchemaSlots
+    schema.classes['A'] = a;
+    schema.classes['B'] = emptyClassDefinition('B');
+
+    const layout = await runAutoLayout(schema, {}, [], new Set());
+    expect(layout.nodes['A']).toBeDefined();
+    expect(layout.nodes['B']).toBeDefined();
+  });
+});

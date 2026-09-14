@@ -10,7 +10,7 @@
  */
 import ELK from 'elkjs/lib/elk.bundled.js';
 import type { ElkNode, ElkExtendedEdge } from 'elkjs/lib/elk-api.js';
-import type { LinkMLSchema, CanvasLayout, EdgeLayout, ClassDefinition, EnumDefinition } from '../model/index.js';
+import type { LinkMLSchema, CanvasLayout, EdgeLayout, ClassDefinition, EnumDefinition, SlotDefinition } from '../model/index.js';
 import type { ImportedEntity } from '../io/importResolver.js';
 
 // Node dimensions used for layout calculations. ClassNode/EnumNode have no
@@ -187,7 +187,8 @@ export async function runAutoLayout(
   opts: AutoLayoutOptions = {},
   ghostEntities: ImportedEntity[] = [],
   hiddenEdgeTypes: ReadonlySet<string> = new Set(),
-  hideTreeRootRangeEdges = false
+  hideTreeRootRangeEdges = false,
+  allSchemaSlots: Record<string, SlotDefinition> = {}
 ): Promise<CanvasLayout> {
   const options = { ...DEFAULT_OPTIONS, ...opts };
 
@@ -269,6 +270,28 @@ export async function runAutoLayout(
           `range__${className}__${slotName}__${slot.range}`,
           className,
           slot.range
+        );
+      }
+
+      // range edges from schema-level slot references (classDef.slots), not
+      // just inline attributes -- mirrors deriveGraph.ts's same two-source
+      // handling. Without this, a schema that declares slots at the schema
+      // level (referenced by name from each class) instead of inline gets
+      // NO range edges into the layout graph at all -- confirmed to leave
+      // every class as an isolated, undirected single-node component when
+      // the schema also has no is_a hierarchy to fall back on.
+      for (const slotName of classDef.slots) {
+        const schemaSlot = allSchemaSlots[slotName] ?? schema.slots?.[slotName];
+        if (!schemaSlot) continue;
+        const usage = classDef.slotUsage[slotName];
+        const effectiveRange = usage?.range ?? schemaSlot.range;
+        if (!effectiveRange || !allIds.has(effectiveRange)) continue;
+        addEdge(
+          elkEdges,
+          edgeSeen,
+          `range__${className}__${slotName}__${effectiveRange}`,
+          className,
+          effectiveRange
         );
       }
     }
