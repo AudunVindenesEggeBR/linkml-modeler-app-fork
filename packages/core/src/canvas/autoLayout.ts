@@ -320,7 +320,11 @@ export async function runAutoLayout(
 
   try {
     const result = await elk.layout(elkGraph);
-    return elkResultToLayout(result);
+    const layout = elkResultToLayout(result);
+    if (hideTreeRootRangeEdges) {
+      repositionTreeRootNodesLeft(schema, layout, options.layerSpacing);
+    }
+    return layout;
   } catch (err) {
     // Fallback: return empty layout so grid positions are used
     console.warn('[AutoLayout] ELK layout failed, falling back to grid:', err);
@@ -375,6 +379,49 @@ function elkResultToLayout(elkNode: ElkNode): CanvasLayout {
   }
 
   return layout;
+}
+
+/**
+ * Repositions tree_root class node(s) strictly left of every other node's
+ * bounding box, mutating `layout.nodes` in place.
+ *
+ * Only meaningful when `hideTreeRootRangeEdges` excluded the tree_root
+ * class's range edges from the layout graph (see runAutoLayout's caller) --
+ * without any edges, a tree_root class becomes an isolated graph component,
+ * and ELK gives no guarantee about where an isolated component lands
+ * relative to the rest of the graph (confirmed empirically: it can end up
+ * between other nodes, sometimes overlapping edges between them). This
+ * overrides ELK's placement for tree_root nodes specifically, rather than
+ * relying on any ELK option, since ELK has no documented way to pin an
+ * isolated component to a specific side regardless of algorithm/direction.
+ *
+ * Multiple tree_root classes (rare but valid LinkML) are stacked vertically
+ * in the left column rather than overlapping each other.
+ */
+function repositionTreeRootNodesLeft(
+  schema: LinkMLSchema,
+  layout: CanvasLayout,
+  layerSpacing: number
+): void {
+  const treeRootNames = Object.entries(schema.classes)
+    .filter(([, def]) => def.treeRoot === true)
+    .map(([name]) => name)
+    .filter((name) => name in layout.nodes);
+  if (treeRootNames.length === 0) return;
+
+  const treeRootSet = new Set(treeRootNames);
+  const otherPositions = Object.entries(layout.nodes).filter(([name]) => !treeRootSet.has(name));
+  if (otherPositions.length === 0) return; // nothing to be "left of"
+
+  const minX = Math.min(...otherPositions.map(([, pos]) => pos.x));
+  const minY = Math.min(...otherPositions.map(([, pos]) => pos.y));
+
+  let y = minY;
+  for (const name of treeRootNames) {
+    const { width, height } = estimateClassNodeSize(schema.classes[name]);
+    layout.nodes[name] = { x: minX - width - layerSpacing, y };
+    y += height + layerSpacing;
+  }
 }
 
 /**

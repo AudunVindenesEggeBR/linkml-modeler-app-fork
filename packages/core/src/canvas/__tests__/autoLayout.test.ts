@@ -383,3 +383,75 @@ describe('runAutoLayout hideTreeRootRangeEdges', () => {
     expect(omitted.nodes).toEqual(explicit.nodes);
   });
 });
+
+describe('runAutoLayout tree_root leftmost repositioning', () => {
+  // Container (tree_root) --range--> A, plus an unrelated is_a hierarchy
+  // (Root -> A, Root -> B, A -> C) so there are several "other" nodes spread
+  // across the layout to check the bounding-box-left property against, not
+  // just a single node.
+  function multiClassTreeRootSchema(): LinkMLSchema {
+    const schema = emptySchema('TestSchema', 'https://example.org/test', 'test');
+    const container = emptyClassDefinition('Container');
+    container.treeRoot = true;
+    container.attributes['ref'] = { ...emptySlotDefinition('ref'), range: 'A' };
+    schema.classes['Container'] = container;
+
+    schema.classes['Root'] = emptyClassDefinition('Root');
+    schema.classes['A'] = classWithAttributes('A', 1, 'Root');
+    schema.classes['B'] = classWithAttributes('B', 1, 'Root');
+    schema.classes['C'] = classWithAttributes('C', 1, 'A');
+    return schema;
+  }
+
+  it("places the tree_root node strictly left of every other node's bounding box", async () => {
+    const schema = multiClassTreeRootSchema();
+    const layout = await runAutoLayout(schema, {}, [], new Set(), true);
+
+    const containerPos = layout.nodes['Container'];
+    const { width } = estimateClassNodeSize(schema.classes['Container']);
+    const minOtherX = Math.min(...['Root', 'A', 'B', 'C'].map((n) => layout.nodes[n].x));
+
+    expect(containerPos.x + width).toBeLessThanOrEqual(minOtherX);
+  });
+
+  it('top-aligns the tree_root node with the topmost other node', async () => {
+    const schema = multiClassTreeRootSchema();
+    const layout = await runAutoLayout(schema, {}, [], new Set(), true);
+
+    const minOtherY = Math.min(...['Root', 'A', 'B', 'C'].map((n) => layout.nodes[n].y));
+    expect(layout.nodes['Container'].y).toBe(minOtherY);
+  });
+
+  it('does not reposition when hideTreeRootRangeEdges is off', async () => {
+    const schema = multiClassTreeRootSchema();
+    const layout = await runAutoLayout(schema, {}, [], new Set(), false);
+
+    // Container's range edge to A is still part of the layout graph here, so
+    // ELK places Container in its own hierarchy layer (above A, same layer
+    // as Root, since neither has an incoming edge) rather than forcing it
+    // left of everything else.
+    expect(layout.nodes['Container'].y).toBeLessThan(layout.nodes['A'].y);
+  });
+
+  it('stacks multiple tree_root classes vertically in the left column without overlapping', async () => {
+    const schema = multiClassTreeRootSchema();
+    const container2 = emptyClassDefinition('Container2');
+    container2.treeRoot = true;
+    schema.classes['Container2'] = container2;
+
+    const layout = await runAutoLayout(schema, {}, [], new Set(), true);
+
+    const c1Pos = layout.nodes['Container'];
+    const c2Pos = layout.nodes['Container2'];
+    const c1Size = estimateClassNodeSize(schema.classes['Container']);
+    const c2Size = estimateClassNodeSize(schema.classes['Container2']);
+    const minOtherX = Math.min(...['Root', 'A', 'B', 'C'].map((n) => layout.nodes[n].x));
+
+    expect(c1Pos.x + c1Size.width).toBeLessThanOrEqual(minOtherX);
+    expect(c2Pos.x + c2Size.width).toBeLessThanOrEqual(minOtherX);
+
+    const box1: Box = { x1: c1Pos.x, y1: c1Pos.y, x2: c1Pos.x + c1Size.width, y2: c1Pos.y + c1Size.height };
+    const box2: Box = { x1: c2Pos.x, y1: c2Pos.y, x2: c2Pos.x + c2Size.width, y2: c2Pos.y + c2Size.height };
+    expect(boxesOverlap(box1, box2)).toBe(false);
+  });
+});
