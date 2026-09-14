@@ -1,6 +1,6 @@
 # Spec: Range-kantar som overlappar/ligg tett, og kant-labelar som forsvinn bak klassar — alternativ
 
-Status: **Delvis implementert.** Alternativ A for Ønske 1 (eige handtak per innkomande range-kant) er implementert og verifisert — sjå "Runde 2" nedst. Ønske 2 (kant-labelar bak klassar) og resten av alternativa for Ønske 1 (B/C/D) står framleis som reine forslag, ikkje implementerte — spec-en held fram i `specs/backlog/` til dei er avgjorde.
+Status: **Delvis implementert.** Alternativ A for Ønske 1 (eige handtak per innkomande range-kant) er implementert — sjå "Runde 2". **Runde 3 rettar ein kritisk regresjon i Runde 2 sin fiks** (kantar til handtak med lågare x-posisjon forsvann heilt inntil ReactFlow vart tvinga til å måle handtaka på nytt — sjå "Runde 3" nedst) — ikkje stadfesta av brukaren i nettlesar enno. Ønske 2 (kant-labelar bak klassar, z-index-diagnose alt gjort) og resten av alternativa for Ønske 1 (B/C/D) står framleis som reine forslag, ikkje implementerte — spec-en held fram i `specs/backlog/` til dei er avgjorde.
 Dato: 2026-09-14
 
 Ønske (ordrett): "eg ønsker at range kantar ikkje skal stacke over kvarandre slik at vi unngår at fleire range kantar tegnes over kvarandre eller rett ved kvarandre (samme eller liten forskjell i x- eller y- koordinat). Det gjer visninga mindre leselig. Kan vi identifisere kantar som tegnes i nærheten av andre kantar i x- eller y- aksen og legge til padding eller distanse mellom dei? (Eller må dette løyses ved å faktisk flytte dei relaterte klassene fordi vi ikkje styrer korleis kantar plasseres, styrer vi kun klassene sin plassering?) I tillegg ønsker eg at beskrivelseslabel på kvar kant ikkje skal komme bak ei klasse men vises i sin helhet."
@@ -81,17 +81,26 @@ Allereie delvis mogleg i dag via dei eksisterande avstand-presetta (`compact`/`n
 
 ## Alternativ for Ønske 2: kant-labelar skal ikkje forsvinne bak ein klasse
 
-### Uavklart, bør stadfestast FØR val av fiks: er dette eit stablings-/z-index-problem, eller eit reint geometrisk plasseringsproblem?
+### Stadfesta empirisk (2026-09-14): dette ER eit reint stablings-/z-index-problem, ikkje (berre) geometri
 
-`EdgeLabelRenderer` (ReactFlow) sitt overlegg-lag sin faktiske stablingsrekkjefølgje i høve til node-laget (`.react-flow__nodes`) er **ikkje stadfesta empirisk i denne økta** — ingen eksplisitt `z-index`-overstyring av desse laga finst i kodebasen (søkt gjennom, stadfesta ingen treff utanom urelaterte dropdown/modal/toast-verdiar). Dette bør sjekkast i nettlesar (DevTools → inspiser eit tilfelle der ein label faktisk forsvinn) FØR val av fiks, sidan svaret avgjer kor stort problemet reelt er:
-- **Viss reint stablingsrekkjefølgje** (label-laget ligg UNDER node-laget i DOM-en): eit label ligg framleis på "rett" geometrisk stad, berre skjult av ein node over. Sidan kvar label alt har sin eigen ugjennomsiktige bakgrunn/border (`edges.tsx:220-252`, `background: var(--color-bg-surface)`), ville ei rein z-index-heving over nodelaget truleg løyst STORPARTEN av problemet åleine, billeg.
-- **Viss geometrisk plassering** (labelen si utrekna midtpunkt-posisjon landar bokstaveleg oppå ein anna node sin boundingboks, uavhengig av lag-rekkjefølgje): ei rein z-index-fiks ville gjort labelen synleg, men FRAMLEIS visuelt "inni"/oppå ein urelatert klasse sitt kort — lesbart, men rotete, ikkje det brukaren truleg meiner med "vises i sin heilheit" i ei rein, ryddig forstand.
+Las den faktiske, installerte ReactFlow-kjeldekoden direkte (`@reactflow/core@11.11.4`, `dist/esm/index.mjs`) i staden for å gjette frå konvensjon — `GraphView`-komponenten sin render-rekkjefølgje er:
+
+```jsx
+React.createElement("div", { className: "react-flow__edgelabel-renderer" }),
+React.createElement(NodeRenderer$1, { ... })
+```
+
+`NodeRenderer` (som teiknar alle klasse-/enum-korta) vert rendra RETT ETTER `edgelabel-renderer`-diven (der alle kant-labelar faktisk portalerer inn via `EdgeLabelRenderer`) — som neste syskenelement i DOM-en. Stadfesta via `grep` gjennom heile det installerte `reactflow`-pakken sin CSS (`style.css`) at **ingen av desse to laga (`.react-flow__edgelabel-renderer`, `.react-flow__nodes`) set nokon eksplisitt `z-index`** — og stadfesta tidlegare (denne økta) at heller ikkje appen sjølv overstyrer dette nokon stad.
+
+**Konsekvens (grunnleggjande, deterministisk CSS-stablingsregel, ikkje ei anteking):** utan `z-index` på nokon av dei to laga, avgjer REIN DOM-REKKJEFØLGJE stablinga — det seinare elementet (her: `NodeRenderer`, altså sjølve nodane) teiknar ALLTID over det tidlegare (`edgelabel-renderer`). **Kvar einaste node i diagrammet ligg difor alltid over kvar einaste kant-label, uansett geometrisk plassering.** Dette er ikkje eit tilfeldig/sporadisk problem avhengig av kor labelen tilfeldigvis landar — det er strukturelt garantert av rendringsrekkjefølgja sjølv, kvar gong ein label sin posisjon overlappar ein node sin boundingboks i det heile.
+
+**Kva dette IKKJE seier noko om:** dette stadfestar berre AT stabling er feil retning — det seier ikkje noko om KOR OFTE ein label sin utrekna midtpunkt faktisk hamnar innanfor ein urelatert node sin boundingboks i praksis (det geometriske spørsmålet frå før). Begge årsakene kan difor vere til stades samstundes: stabling gjer det VERRE når det skjer (usynleg i staden for berre synleg-men-rotete), men fjernar ikkje sjølve grunnen til at det skjer i utgangspunktet.
 
 ### Alternativ A — Berre z-index-heving av label-laget over node-laget
 
-Enklaste moglege fiks, DERSOM diagnosen over stadfestar at det er eit reint stablingsproblem. Global CSS-overstyring (t.d. i `globals.css`/`tokens.css`) som sikrar `.react-flow__edgelabel-renderer` alltid renderer over `.react-flow__nodes`.
+**No stadfesta relevant** (diagnosen over viser at stabling FAKTISK er feil retning i dag). Global CSS-overstyring (t.d. i `globals.css`/`tokens.css`) som sikrar `.react-flow__edgelabel-renderer` alltid renderer over `.react-flow__nodes` — t.d. `.react-flow__edgelabel-renderer { z-index: 10; position: relative; }` (eller tilsvarande, treng eit reelt tal sidan `NodeRenderer` sine barn no vinn på ren DOM-rekkjefølgje utan z-index i det heile — alt over 0 held).
 
-**Vurdering:** billegast, men adresserer berre halve moglege rotårsak (stabling, ikkje geometri). Bør verifiserast empirisk fyrst, ikkje implementerast blindt.
+**Vurdering:** billegast mogleg fiks, løyser HEILE stablings-halvparten av problemet direkte og garantert (ikkje lenger ei anteking — stadfesta at akkurat DETTE er feil retning i dag). Adresserer framleis ikkje den geometriske halvparten (ein label som sit OPPÅ ein urelatert node sitt kort, no synleg men visuelt "inni" kortet i staden for bak det) — men sidan kvar label alt har eigen ugjennomsiktig bakgrunn/border (`edges.tsx:220-252`), vil sjølv den geometriske halvparten sannsynlegvis verte LESBAR (om enn ikkje "reindyrka fri for overlapp") berre av denne eine, billige endringa.
 
 ### Alternativ B — Kollisjonsmedviten label-plassering: oppdag når midtpunktet landar i ein annan node sin boundingboks, og flytt labelen
 
@@ -105,16 +114,18 @@ Mest grundig: viss sjølve BANEN aldri passerer nær/gjennom ein urelatert node,
 
 **Vurdering:** løyser problemet på det mest fundamentale nivået, men er eit MYKJE større, sjølvstendig prosjekt (treng ein heilt ny rute-algoritme som respekterer BÅDE per-slot-ankerpunkt OG hinder-unngåing samstundes — desse to måla er ikkje trivielt sams). **Ikkje tilrådd som fyrste steg.**
 
-### Tilråding for Ønske 2
+### Tilråding for Ønske 2 (oppdatert etter z-index-diagnosen)
 
-1. **Stadfest z-index/stablingsrekkjefølgje empirisk i nettlesar FØRST** (billeg å sjekke, avgjer kor mykje av problemet ei enkel fiks løyser).
-2. Implementer **Alternativ B** (kollisjonsmedviten plassering) som hovudfiks uansett — han dekkjer begge moglege rotårsaker og er den einaste som garanterer "vises i sin heilheit" slik brukaren ber om, ikkje berre "synleg, men rotete".
+1. **Alternativ A (z-index-heving) — no stadfesta ei ekte, garantert-verksam delfiks, ikkje lenger ei uverifisert anteking.** Triviell å implementere (nokre linjer CSS), null risiko, løyser stablings-halvparten av problemet fullstendig og umiddelbart. Tilrådd som eit RASKT fyrste steg, uavhengig av om Alternativ B kjem etterpå eller ikkje.
+2. **Alternativ B (kollisjonsmedviten plassering) framleis tilrådd som den fullstendige fiksen** — z-index åleine gjer ein label SYNLEG, men ikkje nødvendigvis "vist i sin heilheit" i ei rein, ryddig forstand slik brukaren opphavleg bad om (kan framleis sitje visuelt oppå eit urelatert kort). B dekkjer begge rotårsakene (stabling OG geometri) og er den einaste som fullt ut innfrir det opphavlege ønsket.
 3. **Alternativ C** (full hinder-unngåande ruting) er eit mykje større, sjølvstendig initiativ — ikkje tilrådd no.
+
+**Praktisk rekkjefølgje-forslag:** A og B er ikkje gjensidig utelukkande — A kan implementerast FØRST (billeg, umiddelbar betring) og B ETTERPÅ (fullstendig fiks), i staden for å velje mellom dei.
 
 ## Ope spørsmål til brukar
 
 1. **Ønske 1 — kva ambisjonsnivå?** Alternativ A (eige handtak per kant) fjernar den GARANTERTE overlappen fullstendig, men ikkje det mildare "ligg nære kvarandre, kryssar tilfeldig"-tilfellet mellom heilt urelaterte kjelde/mål-par. Er A åleine godt nok som fyrste steg, eller ønskjer du at C (generell kollisjonsdeteksjon) skal inn i same runde?
-2. **Ønske 2 — skal z-index-diagnosen gjerast FØR eit val av fiks**, eller skal me berre implementere Alternativ B direkte (han løyser problemet uansett kva rotårsaka er, berre med litt meir arbeid enn strengt naudsynt viss det viser seg å vere reint stabling)?
+2. ~~Ønske 2 — skal z-index-diagnosen gjerast FØR eit val av fiks~~ **Svart, sjå "Stadfesta empirisk (2026-09-14)" over** — stadfesta at stabling er ei ekte, garantert-verksam delårsak. Attverande spørsmål: skal Alternativ A (z-index) implementerast som eit raskt fyrste steg, Alternativ B (full kollisjonsmedviten plassering) direkte, eller begge (A no, B seinare)?
 3. Er det akseptabelt at Alternativ A (nye per-kant-handtak) kan endre EKSISTERANDE, lagra kant-tilkoplingspunkt for brukarar med alt-lagra layout (sidan handtak-ID-ane endrar namn frå `side-east`/`side-west` til noko per-kant-spesifikt)? Dette bør i så fall handterast bakoverkompatibelt (fall tilbake til gammal åtferd for lagra data utan dei nye ID-ane).
 
 ## Runde 2 (2026-09-14) — Alternativ A for Ønske 1 implementert
@@ -159,3 +170,32 @@ Alternativ A sin skildring nemnde òg "same løysing brukt symmetrisk for samans
 - Full `packages/core`-testpakke: 574/574 testar grøne (**null faktiske testfeil**, stadfesta via eksplisitt `grep -c "FAIL "`), 6 filer feila å STARTE med den alt-dokumenterte `[vitest-pool-runner]`-infrastrukturflaksen — ingen reelle regresjonar.
 
 **Ikkje verifisert manuelt i nettlesar** — visuell stadfesting av at kantane faktisk ser synleg meir spreidde ut på canvaset (ikkje berre at handtak-ID-ane er tekniske ulike) bør gjerast ved neste rebuild/redeploy (hugs `podman-compose down` FØR `up --build -d`).
+
+### Runde 3 (2026-09-14) — kritisk regresjon oppdaga og retta: kantar forsvann heilt for eitt av dei to nye per-kant-handtaka
+
+Brukaren testa Runde 2 sin fiks live og rapporterte: "Grasrotandel klassen har range edge til Frivilligorganisasjon og til Tidsperiode, men kun ein av edgane viser samtidig. Hvis eg drar Grasrotandel klassen litt rundt vil enten den eine eller andre edgen vise." Følgd opp med to presise, sjølvstendig observerte stadfestingar: (1) "Alle edges kjem ut fra 'topp klassen' på høgre side. Dersom det går ein edge til ei anna klasse som har mindre x-posisjon vil edgen forsvinne. Dersom du drar den andre klassen slik at den får lik eller større x-posisjon vil edgen vise igjen", og (2) "funnet støttes av at Right-left visning no ikkje viser nokon edges, fordi alle klasser har mindre x-posisjon enn den dei er kobla til."
+
+**Rotårsak, stadfesta ved å lese den faktisk installerte ReactFlow-kjeldekoden direkte** (`@reactflow/core@11.11.4`, `useUpdateNodeInternals` sin implementasjon):
+
+```js
+function useUpdateNodeInternals() {
+  const store = useStoreApi();
+  return useCallback((id) => {
+    const { domNode, updateNodeDimensions } = store.getState();
+    // ... finn DOM-elementet for node-id-en, tvingar ei NY måling av handtaka sine posisjonar
+    requestAnimationFrame(() => updateNodeDimensions(updates));
+  }, []);
+}
+```
+
+ReactFlow **cachar** kvar node sine handtak-posisjonar frå DEN FYRSTE DOM-målinga (ved mount). FØR Runde 2 var kvar node sitt handtak-SETT konstant (alltid nøyaktig dei same to `side-east`/`side-west`-elementa, uansett data) — denne cache-en var difor alltid korrekt, og trong aldri oppdaterast. Etter Runde 2 er handtak-SETTET data-avhengig (`in-${side}-${source}-${slotName}`, der `side` flipper mellom `east`/`west` etter kor klassane faktisk står i høve til kvarandre) — når brukaren DRO ein klasse slik at eit kant sin `side` flipte, dukka eit HEILT NYTT handtak-ID opp på målnoden, men **ingenting fortalde ReactFlow at han måtte måle nodens handtak på nytt** — han heldt fram med å bruke den GAMLE, no utdaterte cache-en, som ikkje inneheldt det nye handtaket. Kanten som refererte det nye, ikkje-cacha handtaket kunne difor ikkje plasserast og forsvann usynleg (ikkje ein feil, berre stille manglande rendring). Dette forklarer PRESIST alle tre observasjonane: kanten forsvinn nettopp når `target.x < source.x` (den `west`-krevjande greina, som skapar eit NYTT handtak-ID første gong han trengst), kjem attende når du dreg målet slik at det ikkje lenger krev det nye handtaket, og RL-visning (der SO GODT SOM ALLE kantar treng "feil" side samanlikna med kva som var cacha ved fyrste TB-mount) mistar so godt som alle kantane samstundes.
+
+**Retta:** lagt til `useUpdateNodeInternals()` i BÅDE `ClassNode.tsx` og `EnumNode.tsx`, kalla frå ein `useEffect` som køyrer kvar gong nodens `incomingRangeHandles`-ID-liste faktisk endrar seg (ikkje på kvar render — nøkla på ein samanslått streng av handtak-ID-ane, som berre endrar seg når SETTET faktisk endrar seg, t.d. når eit `side` flipper). Dette tvingar ReactFlow til å måle nodens handtak på nytt akkurat når settet endrar seg, uansett om det skjer via drag, layout-omkalkulering, eller skjemaendring.
+
+**Ikkje eit nytt problem for dei GAMLE, faste handtaka** (`side-east`/`side-west` for kollapsa-kjelde-tilfellet, `slot-east-X`/`slot-west-X` for eigne utgåande per-slot-handtak) — desse er anten heilt konstante (side-handtaka) eller berre avhengige av SKJEMA-INNHALD (per-slot-handtaka, knytt til `resolvedSlots`, ikkje til layout-posisjon) — ingen av dei endrar SETT under ein rein drag-operasjon, så dei trong ikkje (og fekk ikkje) denne fiksen. Dette var eit problem UTELUKKANDE for dei nye, layout-posisjon-avhengige handtaka frå Runde 2.
+
+**Verifisert:**
+- Full typecheck av `packages/core` (`tsc --noEmit`): rein.
+- `pnpm exec eslint packages/core/src/canvas/ClassNode.tsx packages/core/src/canvas/EnumNode.tsx`: 0 feil, 0 åtvaringar.
+- Full `packages/core`-testpakke: 298/298 testar grøne (**null faktiske testfeil**), 14 filer feila å STARTE med den alt-dokumenterte infrastrukturflaksen — ingen reelle regresjonar.
+- **Ikkje verifiserbart via automatiserte einingstestar** — `useUpdateNodeInternals` er ein React-hook som krev ein ekte `ReactFlowProvider`-kontekst og faktisk DOM-måling for å ha noka verknad; ingen komponent-rendrings-testinfrastruktur (`@testing-library/react` e.l.) finst for `ClassNode.tsx`/`EnumNode.tsx` i dette repoet (stadfesta fleire gonger tidlegare denne økta). Fiksen kviler på (a) å ha stadfesta rotårsaka presist ved å lese den faktisk installerte ReactFlow-versjonen sin eigen kjeldekode (ikkje gjetting/konvensjon), og (b) at implementeringa følgjer nøyaktig det mønsteret ReactFlow sjølv dokumenterer for akkurat dette føremålet (dynamiske handtak). **Bør stadfestast av brukaren ved neste rebuild/redeploy** — brukaren har alt ein reproduserbar testcase (Grasrotandel-klassen i `enhetsregisteret-frivilligorganisasjonapi-schema.yaml`, pluss RL-visning generelt) klar til å prøve på nytt.

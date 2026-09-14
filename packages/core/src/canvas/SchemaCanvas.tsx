@@ -383,6 +383,7 @@ function SchemaCanvasInner() {
   const [edgeRouting, setEdgeRouting] = useState<typeof EDGE_ROUTINGS[number]>('ORTHOGONAL');
   const [nodePlacementStrategy, setNodePlacementStrategy] = useState<typeof NODE_PLACEMENT_STRATEGIES[number]>('BRANDES_KOEPF');
   const [spacingPreset, setSpacingPreset] = useState<keyof typeof SPACING_PRESETS>('normal');
+  const [considerModelOrder, setConsiderModelOrder] = useState<boolean>(false);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [highlightPinnedNodeId, setHighlightPinnedNodeId] = useState<string | null>(null);
 
@@ -570,7 +571,8 @@ function SchemaCanvasInner() {
     layeringStrategyValue: typeof LAYERING_STRATEGY_UI_OPTIONS[number],
     edgeRoutingValue: typeof EDGE_ROUTINGS[number],
     nodePlacementStrategyValue: typeof NODE_PLACEMENT_STRATEGIES[number],
-    spacingPresetValue: keyof typeof SPACING_PRESETS
+    spacingPresetValue: keyof typeof SPACING_PRESETS,
+    considerModelOrderValue: boolean
   ) => {
     if (!activeSchemaFile) return;
     const layout = await runAutoLayout(
@@ -580,6 +582,7 @@ function SchemaCanvasInner() {
         layeringStrategy: layeringStrategyValue,
         edgeRouting: edgeRoutingValue,
         nodePlacementStrategy: nodePlacementStrategyValue,
+        considerModelOrder: considerModelOrderValue,
         ...SPACING_PRESETS[spacingPresetValue],
       },
       ghostEntities,
@@ -599,8 +602,8 @@ function SchemaCanvasInner() {
   }, [activeSchemaFile, ghostEntities, hiddenEdgeTypes, hideTreeRootRangeEdges, allSchemaSlots, fitView, scheduleManifestWrite, activeViewId, focusMode, updateViewLayout, updateSubsetLayout]);
 
   const handleAutoLayout = useCallback(() => {
-    void applyAutoLayout(layoutDirection, layeringStrategy, edgeRouting, nodePlacementStrategy, spacingPreset);
-  }, [applyAutoLayout, layoutDirection, layeringStrategy, edgeRouting, nodePlacementStrategy, spacingPreset]);
+    void applyAutoLayout(layoutDirection, layeringStrategy, edgeRouting, nodePlacementStrategy, spacingPreset, considerModelOrder);
+  }, [applyAutoLayout, layoutDirection, layeringStrategy, edgeRouting, nodePlacementStrategy, spacingPreset, considerModelOrder]);
 
   // ── ReactFlow event handlers ──────────────────────────────────────────────
 
@@ -1227,11 +1230,12 @@ function SchemaCanvasInner() {
             onChange={(e) => {
               const next = e.target.value as 'TB' | 'BT' | 'LR' | 'RL';
               setLayoutDirection(next);
-              void applyAutoLayout(next, layeringStrategy, edgeRouting, nodePlacementStrategy, spacingPreset);
+              void applyAutoLayout(next, layeringStrategy, edgeRouting, nodePlacementStrategy, spacingPreset, considerModelOrder);
             }}
             title="Layout direction -- re-runs Layout immediately"
           >
-            <option value="TB">↓ Top-down</option>
+            <option value="" disabled>Direction</option>
+            <option value="TB">↓ Top-down (default)</option>
             <option value="BT">↑ Bottom-up</option>
             <option value="LR">→ Left-right</option>
             <option value="RL">← Right-left</option>
@@ -1243,7 +1247,7 @@ function SchemaCanvasInner() {
             onChange={(e) => {
               const next = e.target.value as typeof LAYERING_STRATEGY_UI_OPTIONS[number];
               setLayeringStrategy(next);
-              void applyAutoLayout(layoutDirection, next, edgeRouting, nodePlacementStrategy, spacingPreset);
+              void applyAutoLayout(layoutDirection, next, edgeRouting, nodePlacementStrategy, spacingPreset, considerModelOrder);
             }}
             title="Layering strategy -- re-runs Layout immediately"
           >
@@ -1255,7 +1259,8 @@ function SchemaCanvasInner() {
               clusters (COFFMAN_GRAHAM/STRETCH_WIDTH/MIN_WIDTH), since the
               user did not ask for those to be removed too.
             */}
-            <option value="LONGEST_PATH">Longest path</option>
+            <option value="" disabled>Layering strategy</option>
+            <option value="LONGEST_PATH">Longest path (default)</option>
             <option value="LONGEST_PATH_SOURCE">Longest path source</option>
             <option value="COFFMAN_GRAHAM">Coffman-Graham</option>
             <option value="STRETCH_WIDTH">Stretch width</option>
@@ -1268,11 +1273,12 @@ function SchemaCanvasInner() {
             onChange={(e) => {
               const next = e.target.value as typeof EDGE_ROUTINGS[number];
               setEdgeRouting(next);
-              void applyAutoLayout(layoutDirection, layeringStrategy, next, nodePlacementStrategy, spacingPreset);
+              void applyAutoLayout(layoutDirection, layeringStrategy, next, nodePlacementStrategy, spacingPreset, considerModelOrder);
             }}
             title="Edge routing style -- re-runs Layout immediately"
           >
-            <option value="ORTHOGONAL">Orthogonal (right angles)</option>
+            <option value="" disabled>Edge routing</option>
+            <option value="ORTHOGONAL">Orthogonal (right angles) (default)</option>
             <option value="POLYLINE">Polyline (straight)</option>
             <option value="SPLINES">Splines (curved)</option>
           </select>
@@ -1283,11 +1289,12 @@ function SchemaCanvasInner() {
             onChange={(e) => {
               const next = e.target.value as typeof NODE_PLACEMENT_STRATEGIES[number];
               setNodePlacementStrategy(next);
-              void applyAutoLayout(layoutDirection, layeringStrategy, edgeRouting, next, spacingPreset);
+              void applyAutoLayout(layoutDirection, layeringStrategy, edgeRouting, next, spacingPreset, considerModelOrder);
             }}
             title="Node placement within a layer -- re-runs Layout immediately"
           >
-            <option value="BRANDES_KOEPF">Brandes-Koepf (ELK default)</option>
+            <option value="" disabled>Node placement</option>
+            <option value="BRANDES_KOEPF">Brandes-Koepf (default)</option>
             <option value="LINEAR_SEGMENTS">Linear segments</option>
             <option value="NETWORK_SIMPLEX">Network simplex</option>
             <option value="SIMPLE">Simple</option>
@@ -1299,14 +1306,30 @@ function SchemaCanvasInner() {
             onChange={(e) => {
               const next = e.target.value as keyof typeof SPACING_PRESETS;
               setSpacingPreset(next);
-              void applyAutoLayout(layoutDirection, layeringStrategy, edgeRouting, nodePlacementStrategy, next);
+              void applyAutoLayout(layoutDirection, layeringStrategy, edgeRouting, nodePlacementStrategy, next, considerModelOrder);
             }}
             title="Spacing between class boxes -- re-runs Layout immediately"
           >
+            <option value="" disabled>Spacing</option>
             <option value="compact">Compact spacing</option>
-            <option value="normal">Normal spacing</option>
+            <option value="normal">Normal spacing (default)</option>
             <option value="spacious">Spacious</option>
             <option value="extraSpacious">Extra spacious</option>
+          </select>
+          <select
+            id="lme-canvas-layout-model-order"
+            style={styles.toolbarSelect}
+            value={considerModelOrder ? 'on' : 'off'}
+            onChange={(e) => {
+              const next = e.target.value === 'on';
+              setConsiderModelOrder(next);
+              void applyAutoLayout(layoutDirection, layeringStrategy, edgeRouting, nodePlacementStrategy, spacingPreset, next);
+            }}
+            title="Sort each class's outgoing edges to match its declared attribute order (verified against elkjs's PREFER_EDGES -- reduces crossings from arbitrarily-reordered siblings, does not affect edges converging on the same target) -- re-runs Layout immediately"
+          >
+            <option value="" disabled>Order</option>
+            <option value="off">Default order</option>
+            <option value="on">Schema order</option>
           </select>
         </div>
       </div>

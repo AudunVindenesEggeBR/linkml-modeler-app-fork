@@ -1,5 +1,5 @@
-import React, { memo } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
+import React, { memo, useEffect } from 'react';
+import { Handle, Position, NodeProps, useUpdateNodeInternals } from 'reactflow';
 import type { CanvasNodeData } from '../store/slices/canvasSlice.js';
 import type { EnumDefinition } from '../model/index.js';
 import { Diamond } from '../ui/icons/index.js';
@@ -18,7 +18,7 @@ export interface EnumNodeData extends CanvasNodeData {
 
 const VALUE_LIMIT = ENUM_VALUE_LIMIT;
 
-function EnumNode({ data, selected }: NodeProps<EnumNodeData>) {
+function EnumNode({ id, data, selected }: NodeProps<EnumNodeData>) {
   const { enumDef, collapsed, imported } = data;
   const values = Object.values(enumDef.permissibleValues);
   const visibleValues = collapsed ? [] : values.slice(0, VALUE_LIMIT);
@@ -31,6 +31,16 @@ function EnumNode({ data, selected }: NodeProps<EnumNodeData>) {
   const incomingRangeHandles = data.incomingRangeHandles ?? [];
   const incomingEast = incomingRangeHandles.filter((h) => h.side === 'east');
   const incomingWest = incomingRangeHandles.filter((h) => h.side === 'west');
+  const incomingHandleKey = incomingRangeHandles.map((h) => h.id).join('|');
+
+  // Force ReactFlow to re-measure this node's handles whenever the set
+  // changes -- see the matching comment in ClassNode.tsx for why this is
+  // required now that handle ids are data-dependent (flip east/west as
+  // connected classes get dragged) instead of always the same two fixed ids.
+  const updateNodeInternals = useUpdateNodeInternals();
+  useEffect(() => {
+    updateNodeInternals(id);
+  }, [id, incomingHandleKey, updateNodeInternals]);
 
   return (
     <div

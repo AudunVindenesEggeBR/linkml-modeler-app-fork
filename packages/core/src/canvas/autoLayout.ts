@@ -193,6 +193,26 @@ export interface AutoLayoutOptions {
   nodeNodeSpacing?: number;
   /** Spacing between hierarchy levels */
   layerSpacing?: number;
+  /**
+   * When true, sets ELK's `elk.layered.considerModelOrder.strategy` to
+   * `PREFER_EDGES` (off = ELK's own default, `NONE`). Sorts a class's
+   * outgoing edges into the same order its target classes are stacked
+   * within a layer, so each edge exits roughly straight from its source
+   * instead of ELK's crossing-minimization heuristic reordering siblings
+   * freely (same technique as Graphviz's `ordering=out`).
+   *
+   * Verified empirically (not just from docs) against the bundled elkjs:
+   * a synthetic source with 4 outgoing edges added in order A,B,C,D came
+   * back Y-ordered [C,D,A,B] with the default (NONE), but exactly [A,B,C,D]
+   * with PREFER_EDGES -- and reversing the input edge order flipped the
+   * output to [D,C,B,A], confirming it genuinely reads declaration order,
+   * not some coincidental heuristic. Also confirmed byte-for-byte on
+   * enhetsregisteret-frivilligorganisasjonapi-schema.yaml's
+   * FrivilligOrganisasjon class. Does not help with converging edges
+   * (multiple sources targeting the same class) -- see
+   * specs/backlog/reduce-edge-crossings-elk-options.md.
+   */
+  considerModelOrder?: boolean;
 }
 
 const DIRECTION_TO_ELK: Record<NonNullable<AutoLayoutOptions['direction']>, string> = {
@@ -263,6 +283,7 @@ const DEFAULT_OPTIONS: Required<AutoLayoutOptions> = {
   layeringStrategy: 'LONGEST_PATH',
   edgeRouting: 'ORTHOGONAL',
   nodePlacementStrategy: 'BRANDES_KOEPF',
+  considerModelOrder: false,
   ...SPACING_PRESETS.normal,
 };
 
@@ -412,6 +433,13 @@ export async function runAutoLayout(
       // which reads as flatter and less clearly top-down. User-selectable
       // (see LAYERING_STRATEGIES) via SchemaCanvas.tsx's toolbar.
       'elk.layered.layering.strategy': options.layeringStrategy,
+      // Sorts a class's outgoing edges to match its declared attribute
+      // order, so siblings stack in that order instead of being freely
+      // reordered by crossing minimization -- see AutoLayoutOptions.
+      // considerModelOrder's doc comment for the empirical verification.
+      // NONE (ELK's own default) when off, matching how every other
+      // option here is always explicit rather than conditionally omitted.
+      'elk.layered.considerModelOrder.strategy': options.considerModelOrder ? 'PREFER_EDGES' : 'NONE',
       // Extra breathing room around edges specifically (distinct from
       // node-node spacing above) -- without this, orthogonal edges route
       // right up against node boundaries and each other, making them hard

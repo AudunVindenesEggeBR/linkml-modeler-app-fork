@@ -409,6 +409,66 @@ describe('runAutoLayout edgeRouting / nodePlacementStrategy', () => {
   });
 });
 
+describe('runAutoLayout considerModelOrder', () => {
+  // Source has 4 outgoing range edges, declared in this exact order:
+  // A, B, C, D. Mirrors the empirical verification in AutoLayoutOptions.
+  // considerModelOrder's doc comment (raw elkjs + the real
+  // enhetsregisteret-frivilligorganisasjonapi-schema.yaml FrivilligOrganisasjon
+  // class), now as a regression test against runAutoLayout itself.
+  function orderedSourceSchema(): LinkMLSchema {
+    const schema = emptySchema('TestSchema', 'https://example.org/test', 'test');
+    const source = emptyClassDefinition('Source');
+    source.attributes['toA'] = { ...emptySlotDefinition('toA'), range: 'A' };
+    source.attributes['toB'] = { ...emptySlotDefinition('toB'), range: 'B' };
+    source.attributes['toC'] = { ...emptySlotDefinition('toC'), range: 'C' };
+    source.attributes['toD'] = { ...emptySlotDefinition('toD'), range: 'D' };
+    schema.classes['Source'] = source;
+    schema.classes['A'] = emptyClassDefinition('A');
+    schema.classes['B'] = emptyClassDefinition('B');
+    schema.classes['C'] = emptyClassDefinition('C');
+    schema.classes['D'] = emptyClassDefinition('D');
+    return schema;
+  }
+
+  function yOrder(layout: Awaited<ReturnType<typeof runAutoLayout>>): string[] {
+    return ['A', 'B', 'C', 'D'].sort((a, b) => layout.nodes[a].y - layout.nodes[b].y);
+  }
+
+  it('stacks targets in declared attribute order when on (LR layout)', async () => {
+    const layout = await runAutoLayout(orderedSourceSchema(), { direction: 'LR', considerModelOrder: true }, [], new Set());
+    expect(yOrder(layout)).toEqual(['A', 'B', 'C', 'D']);
+  });
+
+  it('does not reliably preserve declared order when off (default)', async () => {
+    // Not asserting a SPECIFIC scrambled order -- that's an ELK heuristic
+    // implementation detail, not something to lock a test to. Just that it's
+    // not the declared order, confirmed empirically for this exact graph
+    // shape (see the doc comment this test mirrors).
+    const layout = await runAutoLayout(orderedSourceSchema(), { direction: 'LR', considerModelOrder: false }, [], new Set());
+    expect(yOrder(layout)).not.toEqual(['A', 'B', 'C', 'D']);
+  });
+
+  it('reversing declaration order flips the resulting stack order (proves it reads OUR order, not coincidence)', async () => {
+    const schema = orderedSourceSchema();
+    const reversedSource = emptyClassDefinition('Source');
+    reversedSource.attributes['toD'] = { ...emptySlotDefinition('toD'), range: 'D' };
+    reversedSource.attributes['toC'] = { ...emptySlotDefinition('toC'), range: 'C' };
+    reversedSource.attributes['toB'] = { ...emptySlotDefinition('toB'), range: 'B' };
+    reversedSource.attributes['toA'] = { ...emptySlotDefinition('toA'), range: 'A' };
+    schema.classes['Source'] = reversedSource;
+
+    const layout = await runAutoLayout(schema, { direction: 'LR', considerModelOrder: true }, [], new Set());
+    expect(yOrder(layout)).toEqual(['D', 'C', 'B', 'A']);
+  });
+
+  it('defaults to off (unchanged layout behavior) when omitted', async () => {
+    const schema = orderedSourceSchema();
+    const omitted = await runAutoLayout(schema, { direction: 'LR' }, [], new Set());
+    const explicit = await runAutoLayout(schema, { direction: 'LR', considerModelOrder: false }, [], new Set());
+    expect(omitted.nodes).toEqual(explicit.nodes);
+  });
+});
+
 // ── runAutoLayout: no-overlap regression ─────────────────────────────────────
 
 describe('runAutoLayout', () => {

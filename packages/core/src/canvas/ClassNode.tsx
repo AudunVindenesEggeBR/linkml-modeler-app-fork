@@ -1,5 +1,5 @@
-import React, { memo } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
+import React, { memo, useEffect } from 'react';
+import { Handle, Position, NodeProps, useUpdateNodeInternals } from 'reactflow';
 import type { CanvasNodeData } from '../store/slices/canvasSlice.js';
 import type { ClassDefinition, SlotDefinition } from '../model/index.js';
 import type { RangeEdgesMode } from '../store/slices/uiSlice.js';
@@ -104,7 +104,7 @@ function SlotRow({
   );
 }
 
-function ClassNode({ data, selected }: NodeProps<ClassNodeData>) {
+function ClassNode({ id, data, selected }: NodeProps<ClassNodeData>) {
   const { classDef, collapsed, imported, resolvedSlots: resolvedSlotsProp, rangeEdgesMode } = data;
   const requestFocusNode = useAppStore((s) => s.requestFocusNode);
 
@@ -137,6 +137,23 @@ function ClassNode({ data, selected }: NodeProps<ClassNodeData>) {
   const incomingRangeHandles = data.incomingRangeHandles ?? [];
   const incomingEast = incomingRangeHandles.filter((h) => h.side === 'east');
   const incomingWest = incomingRangeHandles.filter((h) => h.side === 'west');
+  const incomingHandleKey = incomingRangeHandles.map((h) => h.id).join('|');
+
+  // ReactFlow caches each node's handle positions from its initial DOM
+  // measurement. Unlike the old, always-identical side-east/side-west
+  // handles, this node's actual set of incoming-edge handles now changes
+  // as classes get dragged around (an edge's target side flips between
+  // east/west depending on relative x position -- see rangeTargetEntrySide
+  // in deriveGraph.ts) -- without telling ReactFlow to re-measure, it keeps
+  // using stale bounds, and any edge referencing a handle id that didn't
+  // exist at last measurement silently fails to render. Confirmed: this
+  // exactly reproduced as "edges to a lower-x target disappear until you
+  // drag it to x >= source, RL layout showing almost no edges at all" --
+  // see specs/done/range-edge-collision-and-label-visibility.md.
+  const updateNodeInternals = useUpdateNodeInternals();
+  useEffect(() => {
+    updateNodeInternals(id);
+  }, [id, incomingHandleKey, updateNodeInternals]);
 
   return (
     <div
