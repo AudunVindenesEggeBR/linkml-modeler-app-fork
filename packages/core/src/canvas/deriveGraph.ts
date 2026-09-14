@@ -13,6 +13,7 @@ import type { EnumNodeData } from './EnumNode.js';
 import type { LabelNodeData } from './LabelNode.js';
 import type { LinkMLEdgeType } from './edges.js';
 import type { ImportedEntity } from '../io/importResolver.js';
+import { type IncomingRangeHandle } from './nodeGeometry.js';
 
 // Default node dimensions used before layout runs.
 const CLASS_NODE_WIDTH = 240;
@@ -58,6 +59,21 @@ function rangeEdgeSide(
   return tgt.x >= src.x ? 'east' : 'west';
 }
 
+/** The side a range edge enters its TARGET on -- opposite of the side it exits its source on. */
+function rangeTargetEntrySide(layout: CanvasLayout, sourceId: string, targetId: string): 'east' | 'west' {
+  return rangeEdgeSide(layout, sourceId, targetId) === 'east' ? 'west' : 'east';
+}
+
+/**
+ * Deterministic id for one incoming range edge's dedicated target handle --
+ * shared between rangeHandles() (what an edge references) and
+ * collectIncomingRangeHandles() (what a target node renders), so the two
+ * always agree without either needing the other's data.
+ */
+function incomingRangeHandleId(side: 'east' | 'west', sourceId: string, slotName: string): string {
+  return `in-${side}-${sourceId}-${slotName}`;
+}
+
 /** Returns the handle IDs for a range edge given source/target nodes and collapse state. */
 function rangeHandles(
   layout: CanvasLayout,
@@ -68,8 +84,66 @@ function rangeHandles(
 ): { sourceHandle: string; targetHandle: string } {
   const side = rangeEdgeSide(layout, sourceId, targetId);
   const sourceHandle = sourceCollapsed ? `side-${side}` : `slot-${side}-${slotName}`;
-  const targetHandle = side === 'east' ? 'side-west' : 'side-east';
+  const targetSide = rangeTargetEntrySide(layout, sourceId, targetId);
+  const targetHandle = incomingRangeHandleId(targetSide, sourceId, slotName);
   return { sourceHandle, targetHandle };
+}
+
+/**
+ * Pre-pass: enumerates every (source, slotName) -> target range relationship
+ * the schema will actually render as an edge (mirrors the exact gating and
+ * resolution logic of the edge-building loops below -- attributes + schema-
+ * level slots, slot_usage range overrides, self-reference exclusion, and the
+ * hiddenEdgeTypes/rangeEdgesMode/hideTreeRootRangeEdges filters), and groups
+ * them by target so each target node knows exactly which dedicated incoming
+ * handles it needs to render. Must stay in sync with the range-edge blocks in
+ * deriveGraph() itself -- see specs/done/range-edge-collision-and-label-visibility.md.
+ */
+function collectIncomingRangeHandles(
+  schema: LinkMLSchema,
+  layout: CanvasLayout,
+  allSchemaSlots: Record<string, SlotDefinition>,
+  allTargetIds: ReadonlySet<string>,
+  hiddenEdgeTypes: ReadonlySet<string>,
+  rangeEdgesMode: RangeEdgesMode,
+  hideTreeRootRangeEdges: boolean
+): Map<string, IncomingRangeHandle[]> {
+  const byTarget = new Map<string, IncomingRangeHandle[]>();
+  if (hiddenEdgeTypes.has('range') || rangeEdgesMode !== 'show') return byTarget;
+
+  const seen = new Set<string>();
+  const addTriple = (source: string, slotName: string, target: string) => {
+    const key = `${source}__${slotName}__${target}`;
+    if (seen.has(key) || !allTargetIds.has(target)) return;
+    seen.add(key);
+    const side = rangeTargetEntrySide(layout, source, target);
+    const list = byTarget.get(target) ?? [];
+    list.push({ id: incomingRangeHandleId(side, source, slotName), side, source, slotName });
+    byTarget.set(target, list);
+  };
+
+  for (const [className, classDef] of Object.entries(schema.classes)) {
+    if (hideTreeRootRangeEdges && classDef.treeRoot) continue;
+    for (const [slotName, slot] of Object.entries(classDef.attributes)) {
+      if (!slot.range || slot.range === className) continue;
+      addTriple(className, slotName, slot.range);
+    }
+    for (const slotName of classDef.slots) {
+      const schemaSlot = allSchemaSlots[slotName] ?? schema.slots?.[slotName];
+      if (!schemaSlot) continue;
+      const usage = classDef.slotUsage[slotName];
+      const effectiveRange = usage?.range ?? schemaSlot.range;
+      if (!effectiveRange || effectiveRange === className) continue;
+      addTriple(className, slotName, effectiveRange);
+    }
+  }
+
+  // Stable order within each target/side so handles don't jump around when
+  // unrelated parts of the schema change.
+  for (const list of byTarget.values()) {
+    list.sort((a, b) => a.source.localeCompare(b.source) || a.slotName.localeCompare(b.slotName));
+  }
+  return byTarget;
 }
 
 /**
@@ -146,6 +220,19 @@ export function deriveGraph(
   const edges: Edge[] = [];
   let gridIndex = 0;
 
+  // Every id a range edge could target: local classes/enums + imported
+  // entities without a local definition (mirrors the existingIds/
+  // allImportedIds computation further down, but needed up-front here since
+  // incoming-handle assignment must happen before any node is built).
+  const localEntityIds = new Set([...Object.keys(schema.classes), ...Object.keys(schema.enums)]);
+  const importedEntityIds = new Set(
+    importedEntities.filter((e) => !localEntityIds.has(e.name)).map((e) => e.name)
+  );
+  const allRangeTargetIds = new Set([...localEntityIds, ...importedEntityIds]);
+  const incomingRangeHandlesByTarget = collectIncomingRangeHandles(
+    schema, layout, allSchemaSlots, allRangeTargetIds, hiddenEdgeTypes, rangeEdgesMode, hideTreeRootRangeEdges
+  );
+
   // ── Class nodes ─────────────────────────────────────────────────────────────
   for (const [className, classDef] of Object.entries(schema.classes)) {
     const pos = layout.nodes[className] ?? gridPosition(gridIndex++);
@@ -193,6 +280,7 @@ export function deriveGraph(
       collapsed: isCollapsed,
       resolvedSlots,
       rangeEdgesMode,
+      incomingRangeHandles: incomingRangeHandlesByTarget.get(className) ?? [],
     };
 
     nodes.push({
@@ -328,6 +416,7 @@ export function deriveGraph(
       entityType: 'enum',
       enumDef,
       collapsed: isCollapsed,
+      incomingRangeHandles: incomingRangeHandlesByTarget.get(enumName) ?? [],
     };
 
     nodes.push({
@@ -371,6 +460,7 @@ export function deriveGraph(
         importSourceFile: entity.sourceFilePath,
         resolvedSlots: importedResolvedSlots,
         rangeEdgesMode,
+        incomingRangeHandles: incomingRangeHandlesByTarget.get(entity.name) ?? [],
       };
       nodes.push({
         id: entity.name,
@@ -388,6 +478,7 @@ export function deriveGraph(
         collapsed: false,
         imported: true,
         importSourceFile: entity.sourceFilePath,
+        incomingRangeHandles: incomingRangeHandlesByTarget.get(entity.name) ?? [],
       };
       nodes.push({
         id: entity.name,

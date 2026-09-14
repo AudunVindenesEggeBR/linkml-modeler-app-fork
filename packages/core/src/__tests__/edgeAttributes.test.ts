@@ -593,3 +593,126 @@ classes:
     expect(graph.edges.every((e) => e.type === 'range')).toBe(true);
   });
 });
+
+// ── Dedicated per-incoming-edge target handles (specs/done/range-edge-collision-and-label-visibility.md) ──
+describe('deriveGraph incoming range-edge handles (Alternativ A)', () => {
+  const CONVERGE_YAML = `
+id: https://example.org/convergetest
+name: convergetest
+prefixes:
+  linkml: https://w3id.org/linkml/
+default_prefix: convergetest
+imports:
+  - linkml:types
+classes:
+  Target:
+    attributes:
+      name:
+        range: string
+  SourceA:
+    attributes:
+      ref:
+        range: Target
+  SourceB:
+    attributes:
+      ref:
+        range: Target
+  SourceC:
+    attributes:
+      ref:
+        range: Target
+enums:
+  TargetEnum:
+    permissible_values:
+      x: {}
+`.trim();
+
+  it('gives each incoming range edge a distinct target handle, not a shared side-east/side-west point', () => {
+    const schema = parseYaml(CONVERGE_YAML);
+    const graph = deriveGraph(schema, emptyCanvasLayout(), {}, [], {});
+    const incoming = graph.edges.filter((e) => e.type === 'range' && e.target === 'Target');
+    expect(incoming).toHaveLength(3);
+
+    const handleIds = incoming.map((e) => e.targetHandle);
+    expect(new Set(handleIds).size).toBe(3); // all distinct
+    for (const id of handleIds) {
+      expect(id).not.toBe('side-east');
+      expect(id).not.toBe('side-west');
+    }
+  });
+
+  it('exposes the same handle ids on the target node as incomingRangeHandles, matching what the edges reference', () => {
+    const schema = parseYaml(CONVERGE_YAML);
+    const graph = deriveGraph(schema, emptyCanvasLayout(), {}, [], {});
+    const targetNode = graph.nodes.find((n) => n.id === 'Target');
+    const nodeHandleIds = (targetNode?.data as { incomingRangeHandles?: Array<{ id: string }> })
+      .incomingRangeHandles?.map((h) => h.id) ?? [];
+
+    const edgeHandleIds = graph.edges
+      .filter((e) => e.type === 'range' && e.target === 'Target')
+      .map((e) => e.targetHandle);
+
+    expect(nodeHandleIds.sort()).toEqual(edgeHandleIds.sort());
+  });
+
+  it('orders incoming handles deterministically by source name, then slot name', () => {
+    const schema = parseYaml(CONVERGE_YAML);
+    const graph = deriveGraph(schema, emptyCanvasLayout(), {}, [], {});
+    const targetNode = graph.nodes.find((n) => n.id === 'Target');
+    const handles = (targetNode?.data as { incomingRangeHandles?: Array<{ source: string }> }).incomingRangeHandles ?? [];
+    expect(handles.map((h) => h.source)).toEqual(['SourceA', 'SourceB', 'SourceC']);
+  });
+
+  it('does not add incoming handles for a target with only one incoming edge (no crowding to fix)', () => {
+    const yaml = `
+id: https://example.org/single
+name: single
+prefixes:
+  linkml: https://w3id.org/linkml/
+default_prefix: single
+imports:
+  - linkml:types
+classes:
+  Target:
+    attributes: {}
+  Source:
+    attributes:
+      ref:
+        range: Target
+`.trim();
+    const schema = parseYaml(yaml);
+    const graph = deriveGraph(schema, emptyCanvasLayout(), {}, [], {});
+    const targetNode = graph.nodes.find((n) => n.id === 'Target');
+    const handles = (targetNode?.data as { incomingRangeHandles?: unknown[] }).incomingRangeHandles ?? [];
+    expect(handles).toHaveLength(1); // still a dedicated handle, just one -- consistent, not a special case
+  });
+
+  it('produces no incoming handles when range edges are hidden (hiddenEdgeTypes / rangeEdgesMode gating respected)', () => {
+    const schema = parseYaml(CONVERGE_YAML);
+    const hidden = deriveGraph(schema, emptyCanvasLayout(), {}, [], {}, new Set(['range']));
+    const targetNode = hidden.nodes.find((n) => n.id === 'Target');
+    expect((targetNode?.data as { incomingRangeHandles?: unknown[] }).incomingRangeHandles).toHaveLength(0);
+
+    const inlineMode = deriveGraph(schema, emptyCanvasLayout(), {}, [], {}, new Set(), 'inline');
+    const targetNode2 = inlineMode.nodes.find((n) => n.id === 'Target');
+    expect((targetNode2?.data as { incomingRangeHandles?: unknown[] }).incomingRangeHandles).toHaveLength(0);
+  });
+
+  it('leaves collapsed-source outgoing handles unchanged (side-${side}, not per-edge)', () => {
+    const schema = parseYaml(CONVERGE_YAML);
+    const graph = deriveGraph(schema, emptyCanvasLayout(), { SourceA: true });
+    const edge = graph.edges.find((e) => e.type === 'range' && e.source === 'SourceA');
+    expect(edge?.sourceHandle).toMatch(/^side-(east|west)$/);
+  });
+
+  it('gives an enum target dedicated incoming handles too (enums only ever receive range edges)', () => {
+    const schema = parseYaml(CONVERGE_YAML);
+    schema.classes['SourceA'].attributes['toEnum'] = { name: 'toEnum', range: 'TargetEnum' };
+    schema.classes['SourceB'].attributes['toEnum'] = { name: 'toEnum', range: 'TargetEnum' };
+    const graph = deriveGraph(schema, emptyCanvasLayout(), {}, [], {});
+    const enumNode = graph.nodes.find((n) => n.id === 'TargetEnum');
+    const handles = (enumNode?.data as { incomingRangeHandles?: Array<{ id: string }> }).incomingRangeHandles ?? [];
+    expect(handles.length).toBe(2);
+    expect(new Set(handles.map((h) => h.id)).size).toBe(2);
+  });
+});

@@ -5,7 +5,7 @@ import type { ClassDefinition, SlotDefinition } from '../model/index.js';
 import type { RangeEdgesMode } from '../store/slices/uiSlice.js';
 import { useAppStore } from '../store/index.js';
 import { ArrowUp, Hexagon, Plus } from '../ui/icons/index.js';
-import { classSlotMidY } from './nodeGeometry.js';
+import { classSlotMidY, incomingHandleTopPercent, type IncomingRangeHandle } from './nodeGeometry.js';
 import { CLASS_SLOT_LIMIT } from './nodeLimits.js';
 
 export interface ResolvedSlot {
@@ -25,6 +25,8 @@ export interface ClassNodeData extends CanvasNodeData {
   importSourceFile?: string; // Source file path — set when imported: true
   resolvedSlots?: ResolvedSlot[]; // Pre-merged, alphabetically sorted for display
   rangeEdgesMode?: RangeEdgesMode; // Controls range rendering: show as edges, inline chips, or auto
+  /** One dedicated handle per incoming range edge -- see nodeGeometry.ts's IncomingRangeHandle doc comment. */
+  incomingRangeHandles?: IncomingRangeHandle[];
 }
 
 const SLOT_LIMIT_EXPANDED = CLASS_SLOT_LIMIT;
@@ -130,6 +132,12 @@ function ClassNode({ data, selected }: NodeProps<ClassNodeData>) {
   // Whether the is_a row is rendered (affects slot y-offsets for handle placement).
   const hasIsA = !collapsed && !!classDef.isA;
 
+  // Incoming range-edge handles, split into east/west groups and evenly
+  // spread along each side -- see nodeGeometry.ts's IncomingRangeHandle doc.
+  const incomingRangeHandles = data.incomingRangeHandles ?? [];
+  const incomingEast = incomingRangeHandles.filter((h) => h.side === 'east');
+  const incomingWest = incomingRangeHandles.filter((h) => h.side === 'west');
+
   return (
     <div
       style={{
@@ -145,9 +153,12 @@ function ClassNode({ data, selected }: NodeProps<ClassNodeData>) {
         style={styles.handle}
       />
 
-      {/* Generic side handles — always present.
-          • As source: used by range edges when this node is collapsed.
-          • As target: used by range edges arriving at this node from the opposite side. */}
+      {/* Generic side handles — source only now: used for outgoing range
+          edges when this node is collapsed (falls back to a single shared
+          point per side, same as before). No longer used as a range-edge
+          TARGET -- see the dedicated per-incoming-edge handles below, which
+          replace the old shared side-east/side-west target point that every
+          incoming range edge converged on regardless of how many there were. */}
       <Handle
         type="source"
         id="side-east"
@@ -160,6 +171,27 @@ function ClassNode({ data, selected }: NodeProps<ClassNodeData>) {
         position={Position.Left}
         style={styles.sideHandle}
       />
+
+      {/* One dedicated target handle per incoming range edge, spread evenly
+          along each side -- see specs/done/range-edge-collision-and-label-visibility.md. */}
+      {incomingEast.map((h, i) => (
+        <Handle
+          key={h.id}
+          type="target"
+          id={h.id}
+          position={Position.Right}
+          style={{ ...styles.sideHandle, top: incomingHandleTopPercent(i, incomingEast.length) }}
+        />
+      ))}
+      {incomingWest.map((h, i) => (
+        <Handle
+          key={h.id}
+          type="target"
+          id={h.id}
+          position={Position.Left}
+          style={{ ...styles.sideHandle, top: incomingHandleTopPercent(i, incomingWest.length) }}
+        />
+      ))}
 
       {/* Header */}
       <div style={{ ...styles.header, background: headerBg }}>

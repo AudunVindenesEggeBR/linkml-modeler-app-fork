@@ -32,3 +32,30 @@ export function classSlotMidY(slotIndex: number, hasIsA: boolean): number {
     CLASS_SLOT_H / 2
   );
 }
+
+/**
+ * One incoming range edge's dedicated connection point on a target node
+ * (class or enum) -- see specs/done/range-edge-collision-and-label-visibility.md.
+ * Replaces the old shared `side-east`/`side-west` target handle (a single
+ * fixed point every incoming range edge converged on, guaranteeing overlap
+ * whenever more than one class referenced the same target) with one handle
+ * per (source, slotName) pair, spread along the target's east/west side.
+ */
+export interface IncomingRangeHandle {
+  /** Handle id to render on the target node and reference as the edge's targetHandle. */
+  id: string;
+  /** Which side of the target node this handle sits on. */
+  side: 'east' | 'west';
+  source: string;
+  slotName: string;
+}
+
+/**
+ * Evenly distributes `count` incoming-handle dots along a node's vertical
+ * extent as a CSS percentage `top` value, inset from the very top/bottom
+ * edge so none sit under the header or right at the card boundary.
+ */
+export function incomingHandleTopPercent(index: number, count: number): string {
+  const pct = 10 + ((index + 1) / (count + 1)) * 80;
+  return `${pct}%`;
+}

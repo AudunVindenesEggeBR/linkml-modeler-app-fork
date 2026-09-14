@@ -4,6 +4,7 @@ import type { CanvasNodeData } from '../store/slices/canvasSlice.js';
 import type { EnumDefinition } from '../model/index.js';
 import { Diamond } from '../ui/icons/index.js';
 import { ENUM_VALUE_LIMIT } from './nodeLimits.js';
+import { incomingHandleTopPercent, type IncomingRangeHandle } from './nodeGeometry.js';
 
 export interface EnumNodeData extends CanvasNodeData {
   entityType: 'enum';
@@ -11,6 +12,8 @@ export interface EnumNodeData extends CanvasNodeData {
   collapsed: boolean;
   imported?: boolean; // True for read-only imported enums
   importSourceFile?: string; // Source file path — set when imported: true
+  /** One dedicated handle per incoming range edge -- see nodeGeometry.ts's IncomingRangeHandle doc comment. */
+  incomingRangeHandles?: IncomingRangeHandle[];
 }
 
 const VALUE_LIMIT = ENUM_VALUE_LIMIT;
@@ -20,6 +23,14 @@ function EnumNode({ data, selected }: NodeProps<EnumNodeData>) {
   const values = Object.values(enumDef.permissibleValues);
   const visibleValues = collapsed ? [] : values.slice(0, VALUE_LIMIT);
   const hiddenCount = collapsed ? 0 : Math.max(0, values.length - VALUE_LIMIT);
+
+  // Incoming range-edge handles, split into east/west groups and evenly
+  // spread along each side -- enums only ever receive range edges, never
+  // send them, so (unlike ClassNode) there's no separate collapsed-source
+  // handle to keep around. See nodeGeometry.ts's IncomingRangeHandle doc.
+  const incomingRangeHandles = data.incomingRangeHandles ?? [];
+  const incomingEast = incomingRangeHandles.filter((h) => h.side === 'east');
+  const incomingWest = incomingRangeHandles.filter((h) => h.side === 'west');
 
   return (
     <div
@@ -32,19 +43,28 @@ function EnumNode({ data, selected }: NodeProps<EnumNodeData>) {
       {/* Enum nodes only receive edges (range targets) */}
       <Handle type="target" position={Position.Top} style={styles.handle} />
 
-      {/* Generic side handles — used as targets for range edges arriving from ClassNodes. */}
-      <Handle
-        type="source"
-        id="side-east"
-        position={Position.Right}
-        style={styles.sideHandle}
-      />
-      <Handle
-        type="source"
-        id="side-west"
-        position={Position.Left}
-        style={styles.sideHandle}
-      />
+      {/* One dedicated target handle per incoming range edge, spread evenly
+          along each side -- replaces the old shared side-east/side-west
+          target point every incoming range edge used to converge on
+          regardless of count. See specs/done/range-edge-collision-and-label-visibility.md. */}
+      {incomingEast.map((h, i) => (
+        <Handle
+          key={h.id}
+          type="target"
+          id={h.id}
+          position={Position.Right}
+          style={{ ...styles.sideHandle, top: incomingHandleTopPercent(i, incomingEast.length) }}
+        />
+      ))}
+      {incomingWest.map((h, i) => (
+        <Handle
+          key={h.id}
+          type="target"
+          id={h.id}
+          position={Position.Left}
+          style={{ ...styles.sideHandle, top: incomingHandleTopPercent(i, incomingWest.length) }}
+        />
+      ))}
 
       {/* Header */}
       <div style={{ ...styles.header, ...(imported ? styles.importedHeader : {}) }}>

@@ -205,4 +205,38 @@ describe('Imported entity pipeline', () => {
     expect(orgData.importSourceFile).toBe('ext.yaml');
     expect(personData.importSourceFile).not.toBe(orgData.importSourceFile);
   });
+
+  // specs/done/range-edge-collision-and-label-visibility.md -- imported/ghost
+  // targets go through a separate node-construction code path from local
+  // classes, so the dedicated-incoming-handle feature needs its own check here.
+  it('gives an imported (ghost) target class dedicated incoming handles too, not a shared side point', () => {
+    const baseSchema = {
+      ...emptySchema('base', 'https://example.org/base', 'base'),
+      classes: { Person: emptyClassDefinition('Person') },
+    };
+    const baseFile = makeSchemaFile('b1', 'base.yaml', baseSchema);
+
+    const classA = emptyClassDefinition('SourceA');
+    classA.attributes = { ref: { name: 'ref', range: 'Person' } };
+    const classB = emptyClassDefinition('SourceB');
+    classB.attributes = { ref: { name: 'ref', range: 'Person' } };
+
+    const mainSchema = {
+      ...emptySchema('main', 'https://example.org/main', 'main'),
+      imports: ['./base'],
+      classes: { SourceA: classA, SourceB: classB },
+    };
+    const mainFile = makeSchemaFile('m1', 'main.yaml', mainSchema);
+
+    const importedEntities = collectReferencedImportedEntities(mainFile, [mainFile, baseFile]);
+    const { nodes, edges } = deriveGraph(mainSchema, emptyCanvasLayout(), {}, importedEntities);
+
+    const personNode = nodes.find((n) => n.id === 'Person');
+    const handles = (personNode?.data as { incomingRangeHandles?: Array<{ id: string }> }).incomingRangeHandles ?? [];
+    expect(handles).toHaveLength(2);
+    expect(new Set(handles.map((h) => h.id)).size).toBe(2);
+
+    const edgeHandleIds = edges.filter((e) => e.target === 'Person').map((e) => e.targetHandle);
+    expect(edgeHandleIds.sort()).toEqual(handles.map((h) => h.id).sort());
+  });
 });
