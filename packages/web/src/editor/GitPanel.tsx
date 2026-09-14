@@ -214,7 +214,7 @@ export function GitPanel({ onSaveBeforeCommit }: { onSaveBeforeCommit?: () => Pr
   }, [
     commitMessage, stagedPaths, repoPath, platform, onSaveBeforeCommit,
     setIsCommitting, setLastGitError, setCommitMessage, clearStaged,
-    pushToast, refreshStatus,
+    pushToast, refreshStatus, activeProject,
   ]);
 
   const requestCredentials = useCallback(async (url: string): Promise<{ username: string; password: string } | null> => {

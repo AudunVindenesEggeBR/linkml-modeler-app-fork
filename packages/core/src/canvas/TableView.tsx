@@ -422,6 +422,15 @@ export function TableView() {
     return enumColumns as ColumnDef<TableRow, string>[];
   }, [rowType, classColumns, slotColumns, enumColumns]);
 
+  // TanStack Table's useReactTable() returns functions React Compiler can't
+  // memoize safely, so it would skip auto-memoizing this component -- the
+  // tool's own safe, documented fallback for known-incompatible libraries,
+  // not a bug. This repo doesn't run the React Compiler build transform at
+  // all (no babel-plugin-react-compiler installed/configured anywhere), so
+  // the warning is purely forward-looking with zero effect today. Suppressed
+  // locally rather than repo-wide so it stays visible/removable if this
+  // project ever adopts the compiler.
+  // eslint-disable-next-line react-hooks/incompatible-library
   const table = useReactTable<TableRow>({
     data: rows,
     columns,

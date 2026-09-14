@@ -596,7 +596,7 @@ function SchemaCanvasInner() {
     }
     setTimeout(() => fitView({ padding: 0.1, duration: 400 }), 100);
     scheduleManifestWrite();
-  }, [activeSchemaFile, ghostEntities, hiddenEdgeTypes, hideTreeRootRangeEdges, allSchemaSlots, fitView, scheduleManifestWrite, activeViewId, views, focusMode, subsetLayouts, updateViewLayout, updateSubsetLayout]);
+  }, [activeSchemaFile, ghostEntities, hiddenEdgeTypes, hideTreeRootRangeEdges, allSchemaSlots, fitView, scheduleManifestWrite, activeViewId, focusMode, updateViewLayout, updateSubsetLayout]);
 
   const handleAutoLayout = useCallback(() => {
     void applyAutoLayout(layoutDirection, layeringStrategy, edgeRouting, nodePlacementStrategy, spacingPreset);
@@ -1133,7 +1133,7 @@ function SchemaCanvasInner() {
         data: { ...edge.data, dimmed: isDimmed },
       };
     });
-  }, [storeEdges, hiddenEdgeTypes, activeViewMemberIds, highlightOnHover, highlightOnSelection, hoveredNodeId, highlightPinnedNodeId, edgeNeighborMap, hopCloseNodeIds]);
+  }, [storeEdges, activeViewMemberIds, highlightOnHover, highlightOnSelection, hoveredNodeId, highlightPinnedNodeId, edgeNeighborMap, hopCloseNodeIds]);
 
   // Empty state
   if (!activeSchemaFile) {
