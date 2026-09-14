@@ -139,7 +139,8 @@ export function deriveGraph(
   importedEntities: ImportedEntity[] = [],
   allSchemaSlots: Record<string, SlotDefinition> = {},
   hiddenEdgeTypes: ReadonlySet<string> = new Set(),
-  rangeEdgesMode: RangeEdgesMode = 'show'
+  rangeEdgesMode: RangeEdgesMode = 'show',
+  hideTreeRootRangeEdges = false
 ): DerivedGraph {
   const nodes: Node<CanvasNodeData>[] = [];
   const edges: Edge[] = [];
@@ -251,7 +252,7 @@ export function deriveGraph(
     }
 
     // ── range edges (from attributes and schema-level slots) ──────────────
-    if (!hiddenEdgeTypes.has('range') && rangeEdgesMode === 'show') {
+    if (!hiddenEdgeTypes.has('range') && rangeEdgesMode === 'show' && !(hideTreeRootRangeEdges && classDef.treeRoot)) {
       for (const [slotName, slot] of Object.entries(classDef.attributes)) {
         if (!slot.range) continue;
         if (slot.range === className) continue; // self-reference: render badge on slot row instead
@@ -404,7 +405,7 @@ export function deriveGraph(
     const srcCollapsed = collapsed[className] ?? false;
 
     // Range edges (attributes)
-    if (!hiddenEdgeTypes.has('range') && rangeEdgesMode === 'show') {
+    if (!hiddenEdgeTypes.has('range') && rangeEdgesMode === 'show' && !(hideTreeRootRangeEdges && classDef.treeRoot)) {
       for (const [slotName, slot] of Object.entries(classDef.attributes)) {
         if (!slot.range) continue;
         if (slot.range === className) continue; // self-reference: no edge

@@ -339,3 +339,47 @@ describe('runAutoLayout', () => {
     expect(boxesOverlap(itemBox, enumBox)).toBe(false);
   });
 });
+
+describe('runAutoLayout hideTreeRootRangeEdges', () => {
+  // Container (tree_root) --range--> A: only this edge should be excluded from
+  // layout when the flag is set. B --range--> C is an unrelated, non-tree_root
+  // range edge and must keep feeding the layout either way.
+  function treeRootSchema(): LinkMLSchema {
+    const schema = emptySchema('TestSchema', 'https://example.org/test', 'test');
+    const container = emptyClassDefinition('Container');
+    container.treeRoot = true;
+    container.attributes['ref'] = { ...emptySlotDefinition('ref'), range: 'A' };
+    schema.classes['Container'] = container;
+    schema.classes['A'] = emptyClassDefinition('A');
+
+    const b = emptyClassDefinition('B');
+    b.attributes['ref'] = { ...emptySlotDefinition('ref'), range: 'C' };
+    schema.classes['B'] = b;
+    schema.classes['C'] = emptyClassDefinition('C');
+    return schema;
+  }
+
+  it('excludes range edges sourced from a tree_root class from the layout graph when set', async () => {
+    const withFlag = await runAutoLayout(treeRootSchema(), {}, [], new Set(), true);
+    const withoutFlag = await runAutoLayout(treeRootSchema(), {}, [], new Set(), false);
+
+    // B -> C is unaffected either way: B is not tree_root, so LONGEST_PATH
+    // (default) still stacks C below B.
+    expect(withFlag.nodes['C'].y).toBeGreaterThan(withFlag.nodes['B'].y);
+    expect(withoutFlag.nodes['C'].y).toBeGreaterThan(withoutFlag.nodes['B'].y);
+
+    // Container -> A is stacked (A below Container) only when the flag is off;
+    // with the flag on, that edge is excluded from the layout graph entirely,
+    // so ELK has no reason to place A below Container -- confirmed empirically
+    // (see specs/done/edge-filter-hide-tree-root-range-edges.md): A ends up on
+    // the SAME layer as Container (y equal) rather than stacked below it.
+    expect(withoutFlag.nodes['A'].y).toBeGreaterThan(withoutFlag.nodes['Container'].y);
+    expect(withFlag.nodes['A'].y).not.toBeGreaterThan(withFlag.nodes['Container'].y);
+  });
+
+  it('defaults to off (unchanged layout behavior) when the parameter is omitted', async () => {
+    const explicit = await runAutoLayout(treeRootSchema(), {}, [], new Set(), false);
+    const omitted = await runAutoLayout(treeRootSchema(), {}, [], new Set());
+    expect(omitted.nodes).toEqual(explicit.nodes);
+  });
+});

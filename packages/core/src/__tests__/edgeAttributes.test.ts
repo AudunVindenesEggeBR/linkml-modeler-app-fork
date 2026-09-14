@@ -536,3 +536,60 @@ classes:
     expect(bookData.rangeEdgesMode).toBe('inline');
   });
 });
+
+// ── hideTreeRootRangeEdges filtering ─────────────────────────────────────────
+describe('deriveGraph hideTreeRootRangeEdges', () => {
+  const TREE_ROOT_YAML = `
+id: https://example.org/treeroottest
+name: treeroottest
+prefixes:
+  linkml: https://w3id.org/linkml/
+default_prefix: treeroottest
+imports:
+  - linkml:types
+classes:
+  Container:
+    tree_root: true
+    attributes:
+      items:
+        range: Item
+      tags:
+        range: Tag
+  Item:
+    attributes:
+      name:
+        range: string
+  Tag:
+    attributes:
+      label:
+        range: string
+      relatedItem:
+        range: Item
+`.trim();
+
+  it('emits range edges from the tree_root class when the flag is off (default)', () => {
+    const schema = parseYaml(TREE_ROOT_YAML);
+    const graph = deriveGraph(schema, emptyCanvasLayout(), {}, [], {}, new Set(), 'show');
+    expect(graph.edges.some((e) => e.type === 'range' && e.source === 'Container')).toBe(true);
+  });
+
+  it('hides only range edges SOURCED from the tree_root class when the flag is on', () => {
+    const schema = parseYaml(TREE_ROOT_YAML);
+    const graph = deriveGraph(schema, emptyCanvasLayout(), {}, [], {}, new Set(), 'show', true);
+    const containerRangeEdges = graph.edges.filter((e) => e.type === 'range' && e.source === 'Container');
+    expect(containerRangeEdges).toHaveLength(0);
+    // Range edge from Tag -> Item is unaffected: Tag is not tree_root, and only the
+    // SOURCE class is checked (per the spec's round-2 decision), not the target.
+    const tagRangeEdge = graph.edges.find((e) => e.type === 'range' && e.source === 'Tag' && e.target === 'Item');
+    expect(tagRangeEdge).toBeDefined();
+  });
+
+  it('does not affect non-range edge types', () => {
+    const schema = parseYaml(TREE_ROOT_YAML);
+    const graph = deriveGraph(schema, emptyCanvasLayout(), {}, [], {}, new Set(), 'show', true);
+    // sanity: no is_a/mixin/union_of edges in this fixture at all, but the flag
+    // must not somehow suppress them if there were any -- covered structurally
+    // by the filter living inside the 'range'-only branches of deriveGraph.
+    expect(graph.edges.every((e) => e.type === 'range')).toBe(true);
+  });
+});

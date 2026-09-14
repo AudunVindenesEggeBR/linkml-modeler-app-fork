@@ -339,6 +339,7 @@ function SchemaCanvasInner() {
   const activeEntity = useAppStore((s) => s.activeEntity);
   const hiddenEdgeTypes = useAppStore((s) => s.hiddenEdgeTypes);
   const globalRangeEdgesMode = useAppStore((s) => s.globalRangeEdgesMode);
+  const hideTreeRootRangeEdges = useAppStore((s) => s.hideTreeRootRangeEdges);
   const updateViewLayout = useAppStore((s) => s.updateViewLayout);
   const subsetLayouts = useAppStore((s) => s.subsetLayouts);
   const updateSubsetLayout = useAppStore((s) => s.updateSubsetLayout);
@@ -478,8 +479,8 @@ function SchemaCanvasInner() {
   // Derive graph (imported entities rendered as ordinary flat nodes)
   const { nodes: derivedNodes, edges: derivedEdges } = useMemo(() => {
     if (!activeSchemaFile) return { nodes: [], edges: [] };
-    return deriveGraph(activeSchemaFile.schema, { ...effectiveLayout, labels: effectiveLabels }, {}, ghostEntities, allSchemaSlots, hiddenEdgeTypes, effectiveRangeEdgesMode);
-  }, [activeSchemaFile, ghostEntities, effectiveLayout, effectiveLabels, allSchemaSlots, hiddenEdgeTypes, effectiveRangeEdgesMode]);
+    return deriveGraph(activeSchemaFile.schema, { ...effectiveLayout, labels: effectiveLabels }, {}, ghostEntities, allSchemaSlots, hiddenEdgeTypes, effectiveRangeEdgesMode, hideTreeRootRangeEdges);
+  }, [activeSchemaFile, ghostEntities, effectiveLayout, effectiveLabels, allSchemaSlots, hiddenEdgeTypes, effectiveRangeEdgesMode, hideTreeRootRangeEdges]);
 
   useEffect(() => {
     setNodes(derivedNodes);
@@ -494,12 +495,12 @@ function SchemaCanvasInner() {
     if (hasLayoutData) {
       void Promise.resolve(activeSchemaFile.canvasLayout).then(setLocalLayout);
     } else {
-      void runAutoLayout(activeSchemaFile.schema, {}, ghostEntities, hiddenEdgeTypes).then((layout) => {
+      void runAutoLayout(activeSchemaFile.schema, {}, ghostEntities, hiddenEdgeTypes, hideTreeRootRangeEdges).then((layout) => {
         setLocalLayout(layout);
         setTimeout(() => fitView({ padding: 0.1, duration: 400 }), 100);
       });
     }
-  }, [activeSchemaFile, ghostEntities, hiddenEdgeTypes, fitView]);
+  }, [activeSchemaFile, ghostEntities, hiddenEdgeTypes, hideTreeRootRangeEdges, fitView]);
 
   useEffect(() => {
     layoutRanRef.current = false;
@@ -525,7 +526,7 @@ function SchemaCanvasInner() {
     if (!hasUnsaved) return;
 
     // Re-run auto-layout to incorporate the new imported nodes
-    runAutoLayout(activeSchemaFile.schema, {}, ghostEntities, hiddenEdgeTypes).then((layout) => {
+    runAutoLayout(activeSchemaFile.schema, {}, ghostEntities, hiddenEdgeTypes, hideTreeRootRangeEdges).then((layout) => {
       // Merge: keep existing user-adjusted positions, add new imported positions
       setLocalLayout((prev) => ({
         nodes: { ...layout.nodes, ...prev.nodes },
@@ -533,7 +534,7 @@ function SchemaCanvasInner() {
       }));
       setTimeout(() => fitView({ padding: 0.1, duration: 400 }), 150);
     });
-  }, [activeSchemaFile, ghostEntities, hiddenEdgeTypes, fitView]);
+  }, [activeSchemaFile, ghostEntities, hiddenEdgeTypes, hideTreeRootRangeEdges, fitView]);
 
   // Zoom to node when a focus request is pending
   useEffect(() => {
@@ -582,7 +583,8 @@ function SchemaCanvasInner() {
         ...SPACING_PRESETS[spacingPresetValue],
       },
       ghostEntities,
-      hiddenEdgeTypes
+      hiddenEdgeTypes,
+      hideTreeRootRangeEdges
     );
     if (activeViewId) {
       updateViewLayout(activeViewId, { nodes: layout.nodes, viewport: layout.viewport });
@@ -593,7 +595,7 @@ function SchemaCanvasInner() {
     }
     setTimeout(() => fitView({ padding: 0.1, duration: 400 }), 100);
     scheduleManifestWrite();
-  }, [activeSchemaFile, ghostEntities, hiddenEdgeTypes, fitView, scheduleManifestWrite, activeViewId, views, focusMode, subsetLayouts, updateViewLayout, updateSubsetLayout]);
+  }, [activeSchemaFile, ghostEntities, hiddenEdgeTypes, hideTreeRootRangeEdges, fitView, scheduleManifestWrite, activeViewId, views, focusMode, subsetLayouts, updateViewLayout, updateSubsetLayout]);
 
   const handleAutoLayout = useCallback(() => {
     void applyAutoLayout(layoutDirection, layeringStrategy, edgeRouting, nodePlacementStrategy, spacingPreset);

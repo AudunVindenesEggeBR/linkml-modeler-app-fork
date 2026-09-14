@@ -17,6 +17,7 @@ const GROUP_BY_IMPORT_SOURCE_KEY = 'linkml-editor-group-by-import-source';
 const HOP_DIMMING_KEY = 'linkml-editor-hop-dimming';
 const TABLE_MODE_ENABLED_KEY = 'linkml-editor-table-mode-enabled';
 const RANGE_EDGES_MODE_KEY = 'linkml-editor-range-edges-mode';
+const HIDE_TREE_ROOT_RANGE_EDGES_KEY = 'linkml-editor-hide-tree-root-range-edges';
 
 export type RangeEdgesMode = 'show' | 'inline' | 'auto';
 
@@ -56,6 +57,14 @@ function loadRangeEdgesMode(): RangeEdgesMode {
     if (raw === 'show' || raw === 'inline' || raw === 'auto') return raw;
   } catch { /* ignore */ }
   return 'show';
+}
+
+function loadHideTreeRootRangeEdges(): boolean {
+  try {
+    const raw = localStorage.getItem(HIDE_TREE_ROOT_RANGE_EDGES_KEY);
+    if (raw !== null) return JSON.parse(raw) === true;
+  } catch { /* ignore */ }
+  return true; // on by default -- see specs/done/edge-filter-hide-tree-root-range-edges.md
 }
 
 function loadHiddenEdgeTypes(): Set<string> {
@@ -115,6 +124,8 @@ export interface UISlice {
   tableModeEnabled: boolean;
   /** Global range-edge rendering mode: show edges, inline as chips, or auto-decide (B1). */
   globalRangeEdgesMode: RangeEdgesMode;
+  /** When true, range edges sourced from a tree_root class (LinkML serialization-only container) are hidden from rendering and layout. On by default. */
+  hideTreeRootRangeEdges: boolean;
 
   // Actions
   setTheme(theme: Theme): void;
@@ -137,6 +148,7 @@ export interface UISlice {
   setHopDimmingN(n: number): void;
   setTableModeEnabled(value: boolean): void;
   setGlobalRangeEdgesMode(mode: RangeEdgesMode): void;
+  setHideTreeRootRangeEdges(value: boolean): void;
 }
 
 let toastCounter = 0;
@@ -158,6 +170,7 @@ export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set) => ({
   hopDimmingN: loadHopDimming().n,
   tableModeEnabled: loadTableModeEnabled(),
   globalRangeEdgesMode: loadRangeEdgesMode(),
+  hideTreeRootRangeEdges: loadHideTreeRootRangeEdges(),
 
   setTheme(theme) {
     set({ theme });
@@ -257,5 +270,10 @@ export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set) => ({
   setGlobalRangeEdgesMode(mode) {
     try { localStorage.setItem(RANGE_EDGES_MODE_KEY, mode); } catch { /* ignore */ }
     set({ globalRangeEdgesMode: mode });
+  },
+
+  setHideTreeRootRangeEdges(value) {
+    try { localStorage.setItem(HIDE_TREE_ROOT_RANGE_EDGES_KEY, JSON.stringify(value)); } catch { /* ignore */ }
+    set({ hideTreeRootRangeEdges: value });
   },
 });

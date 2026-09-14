@@ -127,7 +127,7 @@ All checks passed. You can run:
 Then start the stack:
 
 ```bash
-podman-compose -f deploy/web/docker-compose.yml up --build
+podman-compose -f deploy/web/docker-compose.yml up --build -d
 ```
 
 Opens at [http://localhost:8080](http://localhost:8080) (rootless Podman can't bind port 80 without extra host config — override with `WEB_PORT=<port>` if 8080 is taken). See the [Developer Guide](https://adamlabadorf.github.io/linkml-modeler-app/development) for subpath/reverse-proxy deployment and the Docker-only equivalent.

@@ -2,7 +2,8 @@
  * DisplayPanel — consolidated visual display controls sidebar (B0).
  *
  * Current contents (migrated from SchemaCanvas overlay toolbar):
- *  - Edge Filters: per-type visibility toggles (range, is_a, mixin, union_of)
+ *  - Edge Filters: per-type visibility toggles (range, is_a, mixin, union_of),
+ *    plus a tree_root-specific range-edge toggle (on by default)
  *  - Highlight: hover + selection edge-highlight toggles
  *  - Selection Ops (A3): neighborhood expansion operations
  *
@@ -41,6 +42,8 @@ export function DisplayPanel() {
   const platform = usePlatform();
   const hiddenEdgeTypes = useAppStore((s) => s.hiddenEdgeTypes);
   const toggleEdgeTypeVisibility = useAppStore((s) => s.toggleEdgeTypeVisibility);
+  const hideTreeRootRangeEdges = useAppStore((s) => s.hideTreeRootRangeEdges);
+  const setHideTreeRootRangeEdges = useAppStore((s) => s.setHideTreeRootRangeEdges);
   const highlightOnHover = useAppStore((s) => s.highlightOnHover);
   const highlightOnSelection = useAppStore((s) => s.highlightOnSelection);
   const setHighlightOnHover = useAppStore((s) => s.setHighlightOnHover);
@@ -244,6 +247,18 @@ export function DisplayPanel() {
               </button>
             );
           })}
+          <button
+            id="lme-display-toggle-tree-root-range"
+            style={{
+              ...styles.toggleBtn,
+              borderColor: hideTreeRootRangeEdges ? 'var(--color-state-success)' : 'var(--color-border-default)',
+              color: hideTreeRootRangeEdges ? 'var(--color-state-success)' : 'var(--color-fg-muted)',
+            }}
+            onClick={() => setHideTreeRootRangeEdges(!hideTreeRootRangeEdges)}
+            title="Hide range edges sourced from tree_root classes (LinkML serialization-only container classes, not part of the domain model). Affects layout too."
+          >
+            tree_root range
+          </button>
         </div>
       </div>
 

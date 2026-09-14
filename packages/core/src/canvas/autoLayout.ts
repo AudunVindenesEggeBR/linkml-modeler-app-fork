@@ -186,7 +186,8 @@ export async function runAutoLayout(
   schema: LinkMLSchema,
   opts: AutoLayoutOptions = {},
   ghostEntities: ImportedEntity[] = [],
-  hiddenEdgeTypes: ReadonlySet<string> = new Set()
+  hiddenEdgeTypes: ReadonlySet<string> = new Set(),
+  hideTreeRootRangeEdges = false
 ): Promise<CanvasLayout> {
   const options = { ...DEFAULT_OPTIONS, ...opts };
 
@@ -259,7 +260,7 @@ export async function runAutoLayout(
     // chips on the canvas (see deriveGraph.ts). Without them in the layout
     // graph, classes connected only by range (not is_a/mixin) get no
     // hierarchical placement at all, which reads as scattered/undirected.
-    if (!hiddenEdgeTypes.has('range')) {
+    if (!hiddenEdgeTypes.has('range') && !(hideTreeRootRangeEdges && classDef.treeRoot)) {
       for (const [slotName, slot] of Object.entries(classDef.attributes)) {
         if (!slot.range || !allIds.has(slot.range)) continue;
         addEdge(
