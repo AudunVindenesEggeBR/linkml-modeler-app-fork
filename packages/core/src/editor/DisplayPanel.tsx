@@ -267,11 +267,13 @@ export function DisplayPanel() {
             id="lme-display-toggle-tree-root-range"
             style={{
               ...styles.toggleBtn,
-              borderColor: hideTreeRootRangeEdges ? 'var(--color-state-success)' : 'var(--color-border-default)',
-              color: hideTreeRootRangeEdges ? 'var(--color-state-success)' : 'var(--color-fg-muted)',
+              borderColor: hideTreeRootRangeEdges ? 'var(--color-border-default)' : 'var(--color-state-success)',
+              color: hideTreeRootRangeEdges ? 'var(--color-fg-muted)' : 'var(--color-state-success)',
+              opacity: hideTreeRootRangeEdges ? 0.5 : 1,
+              textDecoration: hideTreeRootRangeEdges ? 'line-through' : 'none',
             }}
             onClick={() => setHideTreeRootRangeEdges(!hideTreeRootRangeEdges)}
-            title="Hide range edges sourced from tree_root classes (LinkML serialization-only container classes, not part of the domain model). Affects layout too."
+            title={`${hideTreeRootRangeEdges ? 'Show' : 'Hide'} range edges sourced from tree_root classes (LinkML serialization-only container classes, not part of the domain model). Affects layout too.`}
           >
             tree_root range
           </button>
