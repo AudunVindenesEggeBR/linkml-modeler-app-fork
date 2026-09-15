@@ -32,7 +32,7 @@ import ClassNode from './ClassNode.js';
 import EnumNode from './EnumNode.js';
 import LabelNode from './LabelNode.js';
 import { ImportSourceOverlay } from './ImportSourceOverlay.js';
-import { Diamond, Hexagon, Plus } from '../ui/icons/index.js';
+import { Diamond, Hexagon, Plus, SlidersHorizontal } from '../ui/icons/index.js';
 import { edgeTypes, EdgeMarkerDefs } from './edges.js';
 import { deriveGraph } from './deriveGraph.js';
 import { runAutoLayout, LAYERING_STRATEGY_UI_OPTIONS, EDGE_ROUTINGS, NODE_PLACEMENT_STRATEGIES, SPACING_PRESETS } from './autoLayout.js';
@@ -384,6 +384,29 @@ function SchemaCanvasInner() {
   const [nodePlacementStrategy, setNodePlacementStrategy] = useState<typeof NODE_PLACEMENT_STRATEGIES[number]>('BRANDES_KOEPF');
   const [spacingPreset, setSpacingPreset] = useState<keyof typeof SPACING_PRESETS>('normal');
   const [considerModelOrder, setConsiderModelOrder] = useState<boolean>(false);
+  // B0: layout settings live in a popover (not inline in the toolbar row) so the
+  // toolbar's default height stays a single row -- a taller always-visible
+  // control stack used to cover the canvas area where a top-down auto-layout
+  // places its first node row (see specs/done/canvas-toolbar-overflow-blocks-panels-and-nodes.md).
+  const [layoutSettingsOpen, setLayoutSettingsOpen] = useState(false);
+  const layoutSettingsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!layoutSettingsOpen) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (layoutSettingsRef.current && !layoutSettingsRef.current.contains(e.target as globalThis.Node)) {
+        setLayoutSettingsOpen(false);
+      }
+    }
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setLayoutSettingsOpen(false);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    window.addEventListener('keydown', handleKey);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('keydown', handleKey);
+    };
+  }, [layoutSettingsOpen]);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [highlightPinnedNodeId, setHighlightPinnedNodeId] = useState<string | null>(null);
 
@@ -1219,10 +1242,22 @@ function SchemaCanvasInner() {
             </button>
           </>
         )}
-        <div style={styles.layoutControls}>
-          <button id="lme-canvas-layout" style={styles.toolbarBtn} onClick={handleAutoLayout} title="Auto Layout (Ctrl+Shift+L)">
-            <Hexagon size={13} style={{ marginRight: 4 }} />Layout
+        <button id="lme-canvas-layout" style={styles.toolbarBtn} onClick={handleAutoLayout} title="Auto Layout (Ctrl+Shift+L)">
+          <Hexagon size={13} style={{ marginRight: 4 }} />Layout
+        </button>
+        <div ref={layoutSettingsRef} style={{ position: 'relative' }}>
+          <button
+            id="lme-canvas-layout-settings-toggle"
+            style={{ ...styles.toolbarBtn, ...styles.toolbarIconBtn, ...(layoutSettingsOpen ? styles.toolbarBtnActive : {}) }}
+            onClick={() => setLayoutSettingsOpen((v) => !v)}
+            title="Layout settings"
+            aria-expanded={layoutSettingsOpen}
+            aria-haspopup="true"
+          >
+            <SlidersHorizontal size={13} />
           </button>
+          {layoutSettingsOpen && (
+          <div id="lme-canvas-layout-settings-popover" style={styles.layoutSettingsPopover} role="menu">
           <select
             id="lme-canvas-layout-direction"
             style={styles.toolbarSelect}
@@ -1278,7 +1313,7 @@ function SchemaCanvasInner() {
             title="Edge routing style -- re-runs Layout immediately"
           >
             <option value="" disabled>Edge routing</option>
-            <option value="ORTHOGONAL">Orthogonal (right angles) (default)</option>
+            <option value="ORTHOGONAL">Orthogonal (right angles)</option>
             <option value="POLYLINE">Polyline (straight)</option>
             <option value="SPLINES">Splines (curved)</option>
           </select>
@@ -1331,6 +1366,8 @@ function SchemaCanvasInner() {
             <option value="off">Default order</option>
             <option value="on">Schema order</option>
           </select>
+          </div>
+          )}
         </div>
       </div>
 
@@ -1463,28 +1500,48 @@ const styles: Record<string, React.CSSProperties> = {
     position: 'absolute',
     top: 12,
     right: 12,
+    maxWidth: 'calc(100% - 24px)',
     display: 'flex',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
     alignItems: 'flex-start',
     gap: 6,
     zIndex: 10,
   },
-  layoutControls: {
+  layoutSettingsPopover: {
+    position: 'absolute',
+    top: 'calc(100% + 6px)',
+    right: 0,
     display: 'flex',
     flexDirection: 'column',
+    alignItems: 'flex-start',
     gap: 6,
+    background: 'var(--color-bg-surface)',
+    border: '1px solid var(--color-border-default)',
+    borderRadius: 8,
+    padding: 8,
+    boxShadow: 'var(--shadow-popover)',
+    zIndex: 20,
   },
   toolbarBtn: {
     background: 'var(--color-bg-surface)',
     border: '1px solid var(--color-border-default)',
     color: 'var(--color-fg-secondary)',
     borderRadius: 6,
-    padding: '6px 12px',
+    padding: '6px 8px',
     fontSize: 12,
     fontFamily: 'var(--font-family-mono)',
     cursor: 'pointer',
     boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
     display: 'flex',
     alignItems: 'center',
+  },
+  toolbarBtnActive: {
+    background: 'var(--color-bg-surface-raised)',
+    borderColor: 'var(--color-border-strong)',
+  },
+  toolbarIconBtn: {
+    padding: '6px 6px',
   },
   toolbarSelect: {
     background: 'var(--color-bg-surface)',

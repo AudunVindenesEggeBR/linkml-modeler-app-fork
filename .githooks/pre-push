@@ -3,6 +3,33 @@
 # never reach CI. Playwright's webServer config auto-starts pnpm dev if needed.
 set -euo pipefail
 
+# Windows Git Bash/MSYS2 sets MSYSTEM (WSL2's own bash never does). Node/pnpm
+# are kept in WSL2 only, by design -- see
+# specs/backlog/pre-push-hook-wsl-delegation.md for the empirical basis of
+# every choice below (path translation method, -ic shell flags, -d ubuntu).
+# Re-invoke this same hook script inside WSL2 instead of trying to run pnpm
+# directly in Git Bash, where it doesn't exist.
+if [ -n "${MSYSTEM:-}" ]; then
+  if ! command -v wsl.exe >/dev/null 2>&1; then
+    echo "error: wsl.exe not found on PATH -- install WSL2, or push from inside a WSL2 terminal instead." >&2
+    exit 1
+  fi
+
+  WIN_TOPLEVEL="$(git rev-parse --show-toplevel)"
+  WSL_TOPLEVEL="$(wsl.exe -d ubuntu wslpath -a "$WIN_TOPLEVEL")" || {
+    echo "error: failed to translate Windows path '$WIN_TOPLEVEL' to a WSL2 path via wslpath" >&2
+    exit 1
+  }
+
+  cd "$WIN_TOPLEVEL"
+  # -ic (interactive, not login) is the only flag combination confirmed to
+  # put pnpm (nvm-managed) on PATH without also printing WSL's MOTD banner
+  # on every push.
+  scripts/time-cmd.sh pre-push-wsl-delegate -- \
+    wsl.exe -d ubuntu -e bash -ic "cd '$WSL_TOPLEVEL' && .githooks/pre-push"
+  exit $?
+fi
+
 cd "$(git rev-parse --show-toplevel)"
 REPO="$(pwd)"
 

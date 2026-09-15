@@ -14,6 +14,7 @@ export {
   Moon,
   PlayCircle,
   Plus,
+  SlidersHorizontal,
   Sun,
   X,
 } from 'lucide-react';
