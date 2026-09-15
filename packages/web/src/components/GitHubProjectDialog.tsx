@@ -538,7 +538,7 @@ const fieldStyles: Record<string, React.CSSProperties> = {
   },
   hint: {
     fontSize: 10,
-    color: 'var(--color-border-strong)',
+    color: 'var(--color-fg-secondary)',
     lineHeight: 1.4,
   },
   errorBox: {
@@ -582,6 +582,6 @@ const progressStyles: Record<string, React.CSSProperties> = {
   },
   label: {
     fontSize: 10,
-    color: 'var(--color-border-strong)',
+    color: 'var(--color-fg-secondary)',
   },
 };

@@ -140,7 +140,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   caret: {
     fontSize: 8,
-    color: 'var(--color-border-strong)',
+    color: 'var(--color-fg-muted)',
     marginLeft: 2,
   },
   dropdown: {

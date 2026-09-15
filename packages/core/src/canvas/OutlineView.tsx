@@ -714,7 +714,7 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '10px 12px 4px',
     fontSize: 10,
     fontWeight: 600,
-    color: 'var(--color-border-strong)',
+    color: 'var(--color-fg-muted)',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     fontFamily: 'var(--font-family-mono)',

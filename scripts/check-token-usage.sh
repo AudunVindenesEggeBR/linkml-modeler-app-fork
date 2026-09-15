@@ -5,6 +5,10 @@
 #   1. fontFamily:'monospace' — zero-tolerance (all migrated in PTS-90)
 #   2. 6-char hex color literals in string values — count-based baseline
 #      (catches '#rrggbb' style strings; embedded hex like '1px solid #...' is a known gap)
+#   3. --color-border-* tokens used as text `color:` — zero-tolerance (all migrated;
+#      see specs/done/border-token-used-as-text-color-contrast-fix.md). Border tokens are
+#      deliberately low-contrast (designed for 1px borders, not readable text); use
+#      --color-fg-* instead.
 #
 # Baseline: 0 — all hex violations migrated to CSS tokens in PTS-92.
 #
@@ -54,6 +58,23 @@ elif [ "${HEX_COUNT}" -lt "${BASELINE_HEX}" ]; then
   echo "      Update BASELINE_HEX in scripts/check-token-usage.sh to ${HEX_COUNT}."
 else
   echo "OK  Hex color literals — ${HEX_COUNT}/${BASELINE_HEX} (at baseline)."
+fi
+
+# ── 3. --color-border-* used as text color — strict zero ─────────────────────
+BORDER_AS_TEXT_COUNT=$(grep -rn --include='*.ts' --include='*.tsx' \
+    -E "^\s*color\s*:.*--color-border-" "${SOURCES[@]}" 2>/dev/null \
+    | grep -v "borderColor" | wc -l | tr -d ' ') || BORDER_AS_TEXT_COUNT=0
+
+if [ "${BORDER_AS_TEXT_COUNT}" -gt 0 ]; then
+  echo "ERROR: ${BORDER_AS_TEXT_COUNT} instance(s) of a --color-border-* token used as text color."
+  echo "       Border tokens are deliberately low-contrast; use --color-fg-* for text"
+  echo "       (--color-fg-secondary for standalone readable content, --color-fg-muted for"
+  echo "       de-emphasized chrome next to something more prominent — see CLAUDE.md)."
+  grep -rn --include='*.ts' --include='*.tsx' \
+    -E "^\s*color\s*:.*--color-border-" "${SOURCES[@]}" 2>/dev/null | grep -v "borderColor" || true
+  FAILED=1
+else
+  echo "OK  --color-border-* used as text color — 0 violations."
 fi
 
 # ── Result ────────────────────────────────────────────────────────────────────

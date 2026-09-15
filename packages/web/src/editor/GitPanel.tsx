@@ -746,7 +746,7 @@ const styles: Record<string, React.CSSProperties> = {
   collapsedLabel: {
     fontSize: 10,
     fontFamily: 'var(--font-family-mono)',
-    color: 'var(--color-border-strong)',
+    color: 'var(--color-fg-muted)',
     fontWeight: 700,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -772,7 +772,7 @@ const styles: Record<string, React.CSSProperties> = {
   lastCommitHint: {
     fontSize: 10,
     fontFamily: 'var(--font-family-mono)',
-    color: 'var(--color-border-default)',
+    color: 'var(--color-fg-secondary)',
     marginLeft: 4,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
@@ -822,7 +822,7 @@ const styles: Record<string, React.CSSProperties> = {
   closeBtn: {
     background: 'transparent',
     border: 'none',
-    color: 'var(--color-border-strong)',
+    color: 'var(--color-fg-muted)',
     cursor: 'pointer',
     fontSize: 12,
     padding: '0 2px',
@@ -887,7 +887,7 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: 'space-between',
     padding: '4px 10px',
     fontSize: 9,
-    color: 'var(--color-border-strong)',
+    color: 'var(--color-fg-muted)',
     fontWeight: 700,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -922,14 +922,14 @@ const styles: Record<string, React.CSSProperties> = {
   noChanges: {
     padding: '12px 10px',
     fontSize: 11,
-    color: 'var(--color-border-strong)',
+    color: 'var(--color-fg-secondary)',
     fontStyle: 'italic',
     textAlign: 'center',
   },
   noGit: {
     padding: '16px',
     fontSize: 12,
-    color: 'var(--color-border-strong)',
+    color: 'var(--color-fg-secondary)',
     textAlign: 'center',
     lineHeight: 1.6,
     display: 'flex',
@@ -985,7 +985,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   settingsSectionTitle: {
     fontSize: 10,
-    color: 'var(--color-border-strong)',
+    color: 'var(--color-fg-muted)',
     fontWeight: 700,
     textTransform: 'uppercase' as const,
     letterSpacing: 0.5,
@@ -993,7 +993,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   settingsHint: {
     fontSize: 10,
-    color: 'var(--color-border-strong)',
+    color: 'var(--color-fg-secondary)',
     fontStyle: 'italic',
     lineHeight: 1.5,
   },
@@ -1076,7 +1076,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   logMeta: {
     fontSize: 10,
-    color: 'var(--color-border-strong)',
+    color: 'var(--color-fg-secondary)',
   },
   credOverlay: {
     position: 'absolute',

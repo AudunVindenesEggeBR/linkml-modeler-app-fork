@@ -168,7 +168,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   groupLabel: {
     fontSize: 10,
-    color: 'var(--color-border-strong)',
+    color: 'var(--color-fg-muted)',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     whiteSpace: 'nowrap',

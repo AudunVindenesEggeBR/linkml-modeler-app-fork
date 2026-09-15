@@ -200,7 +200,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   emptyRow: {
     padding: '4px 10px',
-    color: 'var(--color-border-strong)',
+    color: 'var(--color-fg-secondary)',
     fontStyle: 'italic',
     overflow: 'hidden',
     textOverflow: 'ellipsis',

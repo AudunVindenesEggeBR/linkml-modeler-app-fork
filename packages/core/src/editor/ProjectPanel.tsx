@@ -663,7 +663,7 @@ const styles: Record<string, React.CSSProperties> = {
   empty: {
     padding: 12,
     fontSize: 12,
-    color: 'var(--color-border-strong)',
+    color: 'var(--color-fg-secondary)',
     fontStyle: 'italic',
   },
   sectionHeader: {
@@ -695,12 +695,12 @@ const styles: Record<string, React.CSSProperties> = {
   },
   chevron: {
     fontSize: 8,
-    color: 'var(--color-border-strong)',
+    color: 'var(--color-fg-muted)',
     flexShrink: 0,
   },
   sectionLabel: {
     fontSize: 9,
-    color: 'var(--color-border-strong)',
+    color: 'var(--color-fg-muted)',
     fontWeight: 700,
     textTransform: 'uppercase' as const,
     letterSpacing: 0.5,
@@ -708,7 +708,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   sectionCount: {
     fontSize: 9,
-    color: 'var(--color-border-default)',
+    color: 'var(--color-fg-muted)',
     background: 'var(--color-bg-surface-sunken)',
     borderRadius: 8,
     padding: '0 5px',
@@ -750,7 +750,7 @@ const styles: Record<string, React.CSSProperties> = {
   visibilityBtn: {
     background: 'transparent',
     border: 'none',
-    color: 'var(--color-border-default)',
+    color: 'var(--color-fg-muted)',
     cursor: 'pointer',
     padding: '0 2px',
     fontSize: 8,
@@ -766,7 +766,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   fileIcon: {
     fontSize: 10,
-    color: 'var(--color-border-strong)',
+    color: 'var(--color-fg-muted)',
     flexShrink: 0,
   },
   fileName: {
@@ -796,7 +796,7 @@ const styles: Record<string, React.CSSProperties> = {
   importSource: {
     fontSize: 9,
     fontFamily: 'var(--font-family-mono)',
-    color: 'var(--color-border-default)',
+    color: 'var(--color-fg-secondary)',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap' as const,
@@ -812,7 +812,7 @@ const styles: Record<string, React.CSSProperties> = {
     background: 'var(--color-bg-surface)',
     borderRadius: 3,
     padding: '1px 4px',
-    color: 'var(--color-border-strong)',
+    color: 'var(--color-fg-muted)',
     flexShrink: 0,
     letterSpacing: 0.5,
   },
@@ -836,7 +836,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   stat: {
     fontSize: 10,
-    color: 'var(--color-border-strong)',
+    color: 'var(--color-fg-muted)',
   },
   footer: {
     padding: '6px 10px',
@@ -846,12 +846,12 @@ const styles: Record<string, React.CSSProperties> = {
   },
   footerText: {
     fontSize: 10,
-    color: 'var(--color-border-default)',
+    color: 'var(--color-fg-secondary)',
   },
   searchToggleBtn: {
     background: 'transparent',
     border: 'none',
-    color: 'var(--color-border-strong)',
+    color: 'var(--color-fg-muted)',
     cursor: 'pointer',
     fontSize: 11,
     padding: '0 2px',
@@ -860,7 +860,7 @@ const styles: Record<string, React.CSSProperties> = {
   addViewBtn: {
     background: 'transparent',
     border: 'none',
-    color: 'var(--color-border-strong)',
+    color: 'var(--color-fg-muted)',
     cursor: 'pointer',
     fontSize: 14,
     padding: '0 2px',
@@ -877,7 +877,7 @@ const styles: Record<string, React.CSSProperties> = {
   viewsEmpty: {
     padding: '8px 10px',
     fontSize: 10,
-    color: 'var(--color-border-default)',
+    color: 'var(--color-fg-secondary)',
     fontStyle: 'italic' as const,
     lineHeight: 1.4,
   },
@@ -908,7 +908,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   viewMemberCount: {
     fontSize: 9,
-    color: 'var(--color-border-default)',
+    color: 'var(--color-fg-muted)',
     background: 'var(--color-bg-surface-sunken)',
     borderRadius: 8,
     padding: '0 4px',
@@ -923,7 +923,7 @@ const styles: Record<string, React.CSSProperties> = {
   viewActionBtn: {
     background: 'transparent',
     border: 'none',
-    color: 'var(--color-border-strong)',
+    color: 'var(--color-fg-muted)',
     cursor: 'pointer',
     fontSize: 11,
     padding: '0 3px',

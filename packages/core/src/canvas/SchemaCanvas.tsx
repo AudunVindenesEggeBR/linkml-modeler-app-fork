@@ -1447,7 +1447,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   emptyInner: {
     textAlign: 'center',
-    color: 'var(--color-border-strong)',
+    color: 'var(--color-fg-secondary)',
   },
   emptyTitle: {
     fontSize: 20,

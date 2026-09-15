@@ -16,7 +16,7 @@ export const styles: Record<string, React.CSSProperties> = {
     background: 'var(--color-bg-canvas)',
     border: 'none',
     borderLeft: '1px solid var(--color-border-subtle)',
-    color: 'var(--color-border-strong)',
+    color: 'var(--color-fg-muted)',
     cursor: 'pointer',
     padding: '8px 4px',
     fontSize: 11,
@@ -80,7 +80,7 @@ export const styles: Record<string, React.CSSProperties> = {
     padding: '8px 12px 4px',
     fontSize: 10,
     fontWeight: 700,
-    color: 'var(--color-border-strong)',
+    color: 'var(--color-fg-muted)',
     textTransform: 'uppercase',
     letterSpacing: 0.8,
     borderBottom: '1px solid var(--color-border-subtle)',
@@ -106,7 +106,7 @@ export const styles: Record<string, React.CSSProperties> = {
     textAlign: 'left',
   },
   slotEditorToggle: {
-    color: 'var(--color-border-strong)',
+    color: 'var(--color-fg-muted)',
     fontSize: 10,
     width: 10,
     flexShrink: 0,
@@ -171,7 +171,7 @@ export const styles: Record<string, React.CSSProperties> = {
   importRemoveBtn: {
     background: 'transparent',
     border: 'none',
-    color: 'var(--color-border-strong)',
+    color: 'var(--color-fg-muted)',
     cursor: 'pointer',
     padding: '1px 4px',
     fontSize: 11,
@@ -252,7 +252,7 @@ export const styles: Record<string, React.CSSProperties> = {
   emptyPanel: {
     padding: '24px 16px',
     textAlign: 'center',
-    color: 'var(--color-border-strong)',
+    color: 'var(--color-fg-secondary)',
   },
   emptyMessage: {
     fontSize: 13,
@@ -298,7 +298,7 @@ export const styles: Record<string, React.CSSProperties> = {
   slotRefRemoveBtn: {
     background: 'transparent',
     border: 'none',
-    color: 'var(--color-border-strong)',
+    color: 'var(--color-fg-muted)',
     cursor: 'pointer',
     padding: '1px 4px',
     fontSize: 11,

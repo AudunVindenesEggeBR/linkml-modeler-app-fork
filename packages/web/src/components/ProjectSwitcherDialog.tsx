@@ -251,7 +251,7 @@ const s: Record<string, React.CSSProperties> = {
   },
   itemPath: {
     fontSize: 10,
-    color: 'var(--color-border-strong)',
+    color: 'var(--color-fg-secondary)',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
@@ -265,13 +265,13 @@ const s: Record<string, React.CSSProperties> = {
   },
   itemDate: {
     fontSize: 10,
-    color: 'var(--color-border-strong)',
+    color: 'var(--color-fg-secondary)',
     whiteSpace: 'nowrap',
   },
   removeBtn: {
     background: 'transparent',
     border: 'none',
-    color: 'var(--color-border-strong)',
+    color: 'var(--color-fg-muted)',
     cursor: 'pointer',
     padding: '2px 4px',
     fontSize: 16,

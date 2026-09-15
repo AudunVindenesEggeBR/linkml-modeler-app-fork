@@ -394,7 +394,7 @@ const menuStyles: Record<string, React.CSSProperties> = {
     background: 'var(--color-border-default)',
   },
   itemDisabled: {
-    color: 'var(--color-border-strong)',
+    color: 'var(--color-fg-muted)',
     cursor: 'default',
   },
   itemLabel: {

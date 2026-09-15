@@ -123,7 +123,7 @@ export function AppSettingsDialog({ onClose }: AppSettingsDialogProps) {
 const styles: Record<string, React.CSSProperties> = {
   loading: {
     fontSize: 12,
-    color: 'var(--color-border-strong)',
+    color: 'var(--color-fg-secondary)',
   },
   section: {
     display: 'flex',
@@ -160,11 +160,11 @@ const styles: Record<string, React.CSSProperties> = {
   },
   hint: {
     fontSize: 10,
-    color: 'var(--color-border-strong)',
+    color: 'var(--color-fg-secondary)',
     lineHeight: 1.5,
   },
   noElectron: {
     fontSize: 12,
-    color: 'var(--color-border-strong)',
+    color: 'var(--color-fg-secondary)',
   },
 };

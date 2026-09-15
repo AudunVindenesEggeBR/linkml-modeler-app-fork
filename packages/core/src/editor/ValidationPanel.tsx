@@ -339,7 +339,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   collapsedLabel: {
     fontSize: 10,
-    color: 'var(--color-border-strong)',
+    color: 'var(--color-fg-muted)',
     fontWeight: 700,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
@@ -370,7 +370,7 @@ const styles: Record<string, React.CSSProperties> = {
   closeBtn: {
     background: 'transparent',
     border: 'none',
-    color: 'var(--color-border-strong)',
+    color: 'var(--color-fg-muted)',
     cursor: 'pointer',
     fontSize: 12,
     padding: '0 2px',
@@ -379,7 +379,7 @@ const styles: Record<string, React.CSSProperties> = {
   notice: {
     padding: '4px 12px',
     fontSize: 10,
-    color: 'var(--color-border-default)',
+    color: 'var(--color-fg-secondary)',
     fontStyle: 'italic',
     borderBottom: '1px solid var(--color-border-subtle)',
     flexShrink: 0,
@@ -411,7 +411,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   notRun: {
     fontSize: 11,
-    color: 'var(--color-border-strong)',
+    color: 'var(--color-fg-secondary)',
     fontStyle: 'italic',
   },
   summaryRight: {
@@ -421,7 +421,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   timeAgo: {
     fontSize: 10,
-    color: 'var(--color-border-default)',
+    color: 'var(--color-fg-secondary)',
   },
   runBtn: {
     background: 'var(--color-class-concrete)',
@@ -489,7 +489,7 @@ const styles: Record<string, React.CSSProperties> = {
   issuePath: {
     fontSize: 10,
     fontFamily: 'var(--font-family-mono)',
-    color: 'var(--color-border-strong)',
+    color: 'var(--color-fg-secondary)',
     flex: 1,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
@@ -508,7 +508,7 @@ const styles: Record<string, React.CSSProperties> = {
   emptyList: {
     padding: '16px 12px',
     fontSize: 12,
-    color: 'var(--color-border-strong)',
+    color: 'var(--color-fg-secondary)',
     fontStyle: 'italic',
     textAlign: 'center',
   },

@@ -191,7 +191,7 @@ const styles: Record<string, React.CSSProperties> = {
   empty: {
     padding: 12,
     fontSize: 11,
-    color: 'var(--color-border-strong)',
+    color: 'var(--color-fg-secondary)',
     fontStyle: 'italic',
   },
   groupHeader: {
@@ -203,7 +203,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   groupLabel: {
     fontSize: 9,
-    color: 'var(--color-border-strong)',
+    color: 'var(--color-fg-muted)',
     fontFamily: 'var(--font-family-mono)',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -217,7 +217,7 @@ const styles: Record<string, React.CSSProperties> = {
     background: 'var(--color-bg-surface)',
     borderRadius: 3,
     padding: '1px 4px',
-    color: 'var(--color-border-strong)',
+    color: 'var(--color-fg-muted)',
     flexShrink: 0,
   },
   row: {

@@ -589,7 +589,7 @@ const styles: Record<string, React.CSSProperties> = {
     background: 'var(--color-bg-canvas)',
     border: 'none',
     borderRight: '1px solid var(--color-border-subtle)',
-    color: 'var(--color-border-strong)',
+    color: 'var(--color-fg-muted)',
     cursor: 'pointer',
     padding: '8px 4px',
     fontSize: 11,
@@ -607,7 +607,7 @@ const styles: Record<string, React.CSSProperties> = {
   sectionHeader: {
     fontSize: 10,
     fontWeight: 600,
-    color: 'var(--color-border-strong)',
+    color: 'var(--color-fg-muted)',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     padding: '6px 12px 4px',

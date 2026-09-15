@@ -200,7 +200,7 @@ export function FilteredGroupedSelect({
                   style={{
                     padding: '4px 8px 2px',
                     fontSize: 9,
-                    color: 'var(--color-border-strong)',
+                    color: 'var(--color-fg-muted)',
                     textTransform: 'uppercase',
                     letterSpacing: 0.5,
                     fontFamily: 'var(--font-family-mono)',
