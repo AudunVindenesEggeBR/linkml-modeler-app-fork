@@ -278,6 +278,14 @@ After merge, `gh release create --notes-file` uses the curated notes as the GitH
 - When a spec's recommendations are actually implemented (not just proposed), `git mv` the file from `specs/backlog/` to `specs/done/` as part of that same change — don't leave a completed spec sitting in `backlog/`.
 - Commit that move together with the implementation using a compact Conventional Commits message (see "Commits" above for the prefix set) describing what was implemented, not "move spec to done."
 
+## Application Error Handling
+
+**No security-by-obscurity: catch errors and surface what actually happened, don't paper over an unknown cause with a confident-sounding guess.** A caught error shown to the user should describe what the code actually knows, not a specific diagnosis the code cannot verify — a plausible-looking guess is worse than an honest "something went wrong," because it actively misdirects troubleshooting toward the wrong problem.
+
+Concretely, the incident that prompted this rule: `projectLoader.ts`'s `openSchemaFromUrl` and `ImportSchemaDialog.tsx` both treated any `fetch()` failure whose message was exactly `"Failed to fetch"` as proof of a CORS policy rejection, and told the user so. But the Fetch API throws that identical, deliberately uninformative message for many distinct underlying causes — DNS failure, a reset connection, being offline, a browser extension blocking the request, a cold TLS handshake to a not-yet-contacted host, and an actual CORS rejection all look the same to JS; the browser withholds the real reason by design, for cross-origin security reasons. Labeling all of them "CORS" was a guess dressed up as a diagnosis. It was caught because the exact same URL succeeded on an unmodified retry moments later — proof the label was wrong, since a real CORS policy violation fails consistently, not intermittently.
+
+When an error's true cause can't be reliably determined from the API surface available, say so honestly (e.g. "network request failed — try again" with the raw error message alongside, or a link to the browser console) rather than asserting a specific cause the code has no way to actually verify. This applies to any user-facing error path in the app (fetch failures, file I/O, git operations, YAML parse errors, etc.), not just the CORS case above.
+
 ## Architecture
 
 ### Monorepo Layout (4 packages)

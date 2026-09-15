@@ -5,6 +5,7 @@ import type { Project, SchemaFile } from '../model/index.js';
 import { emptyCanvasLayout, emptySchema } from '../model/index.js';
 import { parseYaml } from '../io/yaml.js';
 import { resolveImports, normalizeSchemaUrl } from '../io/importResolver.js';
+import { fetchTextWithRetry } from '../io/fetchErrors.js';
 import { readEditorManifest, applyManifestToSchemas, MANIFEST_FILENAME, type ViewDefinition, type ViewLayout } from '../io/editorManifest.js';
 
 const SKIP_DIR_NAMES = new Set(['.git', 'node_modules']);
@@ -185,8 +186,9 @@ export async function loadDemoSchemaFromUrl(url: string, name: string): Promise<
  * wrap everything in a transient Project (no rootPath — the user can Save to
  * a local folder later).
  *
- * Throws a user-friendly Error on CORS/network failures, non-schema content,
- * or YAML parse errors.
+ * Throws a user-friendly Error (see fetchTextWithRetry/classifyFetchError for
+ * how network failures are worded — honestly, not diagnosed as CORS
+ * specifically) on network failures, non-schema content, or YAML parse errors.
  */
 export async function openSchemaFromUrl(rawUrl: string, platform: PlatformAPI): Promise<Project> {
   // github.com blob (web UI) pages don't send CORS headers, so a bare fetch
@@ -194,24 +196,7 @@ export async function openSchemaFromUrl(rawUrl: string, platform: PlatformAPI): 
   // raw.githubusercontent.com, which does. Users overwhelmingly paste the
   // blob URL since that's what's in the address bar when browsing a repo.
   const url = normalizeSchemaUrl(rawUrl);
-  let content: string;
-  try {
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status} ${response.statusText}`);
-    }
-    content = await response.text();
-  } catch (err) {
-    if (err instanceof Error && (err.message.startsWith('HTTP ') || err.message.startsWith('Failed to fetch'))) {
-      const isCors = err.message === 'Failed to fetch';
-      throw new Error(
-        isCors
-          ? `Could not reach URL — the server may not allow cross-origin requests (CORS)`
-          : err.message
-      );
-    }
-    throw new Error(`Network error: ${err instanceof Error ? err.message : String(err)}`);
-  }
+  const content = await fetchTextWithRetry(url);
 
   if (!looksLikeLinkMLSchema(content)) {
     throw new Error('URL does not appear to contain a LinkML schema (expected id: and classes:/prefixes: fields)');

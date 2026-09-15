@@ -11,6 +11,7 @@ import { usePlatform } from '../platform/PlatformContext.js';
 import { useAppStore } from '../store/index.js';
 import { parseYaml } from '../io/yaml.js';
 import { normalizeSchemaUrl } from '../io/importResolver.js';
+import { fetchTextWithRetry } from '../io/fetchErrors.js';
 import { emptyCanvasLayout } from '../model/index.js';
 import { Button } from '../ui/Button.js';
 import { Dialog } from '../ui/Dialog.js';
@@ -106,11 +107,7 @@ export function ImportSchemaDialog({ onClose }: ImportSchemaDialogProps) {
       // content at raw.githubusercontent.com does, and is what's actually
       // needed here — see normalizeSchemaUrl.
       const url = normalizeSchemaUrl(urlValue.trim());
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      const content = await response.text();
+      const content = await fetchTextWithRetry(url);
       const schema = parseYaml(content);
       const filePath = deriveFilenameFromUrl(url);
 
@@ -139,12 +136,7 @@ export function ImportSchemaDialog({ onClose }: ImportSchemaDialogProps) {
       });
       onClose();
     } catch (err) {
-      const isCors = err instanceof Error && err.message === 'Failed to fetch';
-      setError(
-        isCors
-          ? 'Could not reach URL — the server may not allow cross-origin requests (CORS)'
-          : err instanceof Error ? err.message : 'Failed to fetch schema from URL'
-      );
+      setError(err instanceof Error ? err.message : 'Failed to fetch schema from URL');
     } finally {
       setLoading(false);
     }
