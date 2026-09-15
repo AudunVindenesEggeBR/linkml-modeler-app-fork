@@ -11,6 +11,7 @@ describe('EditorSlice', () => {
     const store = createStore();
     expect(store.getState().activeEntity).toBeNull();
     expect(store.getState().propertiesPanelOpen).toBe(true);
+    expect(store.getState().displayPanelOpen).toBe(true);
     expect(store.getState().projectPanelOpen).toBe(true);
     expect(store.getState().gitPanelOpen).toBe(false);
   });
@@ -45,6 +46,11 @@ describe('EditorSlice', () => {
 
     store.getState().setPropertiesPanelOpen(false);
     expect(store.getState().propertiesPanelOpen).toBe(false);
+    expect(store.getState().gitPanelOpen).toBe(true); // unaffected
+
+    store.getState().setDisplayPanelOpen(false);
+    expect(store.getState().displayPanelOpen).toBe(false);
+    expect(store.getState().propertiesPanelOpen).toBe(false); // unaffected
     expect(store.getState().gitPanelOpen).toBe(true); // unaffected
   });
 

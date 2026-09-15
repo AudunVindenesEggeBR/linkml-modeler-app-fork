@@ -18,6 +18,7 @@ import { useAppStore } from '../store/index.js';
 import { collectReferencedImportedEntities } from '../io/importResolver.js';
 import { usePlatform } from '../platform/PlatformContext.js';
 import { buildManifestData, writeEditorManifest } from '../io/editorManifest.js';
+import { X } from '../ui/icons/index.js';
 import {
   buildAdjacency,
   getAncestors,
@@ -59,6 +60,8 @@ export function DisplayPanel() {
   const setHopDimmingN = useAppStore((s) => s.setHopDimmingN);
   const globalRangeEdgesMode = useAppStore((s) => s.globalRangeEdgesMode);
   const setGlobalRangeEdgesMode = useAppStore((s) => s.setGlobalRangeEdgesMode);
+  const displayPanelOpen = useAppStore((s) => s.displayPanelOpen);
+  const setDisplayPanelOpen = useAppStore((s) => s.setDisplayPanelOpen);
 
   // A3: Selection state and schema info
   const selectedNodeIds = useAppStore((s) => s.selectedNodeIds);
@@ -119,6 +122,14 @@ export function DisplayPanel() {
     return buildAdjacency(activeSchemaFile.schema, ghostEntityNames);
   }, [activeSchemaFile, ghostEntityNames]);
 
+  if (!displayPanelOpen) {
+    return (
+      <button style={styles.collapsedTab} onClick={() => setDisplayPanelOpen(true)} title="Open Display Panel">
+        D ›
+      </button>
+    );
+  }
+
   const hasSelection = selectedNodeIds.length > 0;
 
   function runOp(op: (seeds: Set<string>) => Set<string>, additive = false) {
@@ -156,6 +167,11 @@ export function DisplayPanel() {
     <div id="lme-display-panel" style={styles.panel}>
       <div style={styles.header}>
         <span style={styles.headerTitle}>Display</span>
+        <div style={styles.headerActions}>
+          <button style={styles.headerBtn} onClick={() => setDisplayPanelOpen(false)} title="Minimize panel">
+            <X size={12} />
+          </button>
+        </div>
       </div>
 
       <div style={styles.body}>
@@ -540,6 +556,7 @@ const styles: Record<string, React.CSSProperties> = {
   header: {
     display: 'flex',
     alignItems: 'center',
+    justifyContent: 'space-between',
     padding: '8px 12px',
     borderBottom: '1px solid var(--color-border-subtle)',
     flexShrink: 0,
@@ -550,6 +567,31 @@ const styles: Record<string, React.CSSProperties> = {
     color: 'var(--color-fg-muted)',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+  },
+  headerActions: {
+    display: 'flex',
+    gap: 4,
+  },
+  headerBtn: {
+    background: 'transparent',
+    border: '1px solid var(--color-border-default)',
+    color: 'var(--color-fg-muted)',
+    cursor: 'pointer',
+    borderRadius: 4,
+    padding: '2px 6px',
+    fontSize: 13,
+    lineHeight: 1.4,
+  },
+  collapsedTab: {
+    writingMode: 'vertical-rl',
+    background: 'var(--color-bg-canvas)',
+    border: 'none',
+    borderRight: '1px solid var(--color-border-subtle)',
+    color: 'var(--color-border-strong)',
+    cursor: 'pointer',
+    padding: '8px 4px',
+    fontSize: 11,
+    flexShrink: 0,
   },
   body: {
     flex: 1,

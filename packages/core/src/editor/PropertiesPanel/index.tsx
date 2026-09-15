@@ -71,7 +71,7 @@ export function PropertiesPanel() {
           <button style={styles.headerBtn} onClick={redo} title="Redo (Ctrl+Shift+Z)">
             ↪
           </button>
-          <button style={styles.headerBtn} onClick={() => setPropertiesPanelOpen(false)} title="Close panel">
+          <button style={styles.headerBtn} onClick={() => setPropertiesPanelOpen(false)} title="Minimize panel">
             <X size={12} />
           </button>
         </div>

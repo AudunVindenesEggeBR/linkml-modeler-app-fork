@@ -12,6 +12,7 @@ export interface EditorSlice {
   // State
   activeEntity: ActiveEntity;
   propertiesPanelOpen: boolean;
+  displayPanelOpen: boolean;
   projectPanelOpen: boolean;
   gitPanelOpen: boolean;
   schemaSettingsOpen: boolean;
@@ -28,6 +29,7 @@ export interface EditorSlice {
   setActiveEntity(entity: ActiveEntity): void;
   clearActiveEntity(): void;
   setPropertiesPanelOpen(open: boolean): void;
+  setDisplayPanelOpen(open: boolean): void;
   setProjectPanelOpen(open: boolean): void;
   setGitPanelOpen(open: boolean): void;
   setSchemaSettingsOpen(open: boolean): void;
@@ -44,6 +46,7 @@ export interface EditorSlice {
 export const createEditorSlice: StateCreator<EditorSlice, [], [], EditorSlice> = (set) => ({
   activeEntity: null,
   propertiesPanelOpen: true,
+  displayPanelOpen: true,
   projectPanelOpen: true,
   gitPanelOpen: false,
   schemaSettingsOpen: false,
@@ -66,6 +69,10 @@ export const createEditorSlice: StateCreator<EditorSlice, [], [], EditorSlice> =
 
   setPropertiesPanelOpen(open) {
     set({ propertiesPanelOpen: open });
+  },
+
+  setDisplayPanelOpen(open) {
+    set({ displayPanelOpen: open });
   },
 
   setProjectPanelOpen(open) {
