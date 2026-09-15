@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { create } from 'zustand';
-import { createUISlice, type UISlice } from '../store/slices/uiSlice.js';
+import { createUISlice, type UISlice, YAML_PREVIEW_MIN_WIDTH, YAML_PREVIEW_MAX_WIDTH } from '../store/slices/uiSlice.js';
 
 const HOP_DIMMING_KEY = 'linkml-editor-hop-dimming';
 const HIDDEN_EDGE_TYPES_KEY = 'linkml-editor-hidden-edge-types';
@@ -70,6 +70,30 @@ describe('UISlice', () => {
     const store = createStore();
     store.getState().setPropertiesPanelWidth(400);
     expect(store.getState().propertiesPanelWidth).toBe(400);
+  });
+
+  it('yamlPreviewWidth — starts at the minimum (default) width', () => {
+    const store = createStore();
+    expect(store.getState().yamlPreviewWidth).toBe(YAML_PREVIEW_MIN_WIDTH);
+  });
+
+  it('setYamlPreviewWidth — updates width within range', () => {
+    const store = createStore();
+    store.getState().setYamlPreviewWidth(450);
+    expect(store.getState().yamlPreviewWidth).toBe(450);
+  });
+
+  it('setYamlPreviewWidth — clamps to the maximum (double the default)', () => {
+    const store = createStore();
+    store.getState().setYamlPreviewWidth(9999);
+    expect(store.getState().yamlPreviewWidth).toBe(YAML_PREVIEW_MAX_WIDTH);
+    expect(YAML_PREVIEW_MAX_WIDTH).toBe(YAML_PREVIEW_MIN_WIDTH * 2);
+  });
+
+  it('setYamlPreviewWidth — clamps to the minimum', () => {
+    const store = createStore();
+    store.getState().setYamlPreviewWidth(10);
+    expect(store.getState().yamlPreviewWidth).toBe(YAML_PREVIEW_MIN_WIDTH);
   });
 
   it('setSyncStatus — sets sync status', () => {

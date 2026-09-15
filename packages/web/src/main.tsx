@@ -168,6 +168,7 @@ function RootApp({
 // ── YAML Preview panel ────────────────────────────────────────────────────────
 function YamlPreview() {
   const schema = useAppStore((s) => s.getActiveSchema());
+  const yamlPreviewWidth = useAppStore((s) => s.yamlPreviewWidth);
 
   const yaml = React.useMemo(() => {
     if (!schema?.schema) return '';
@@ -178,8 +179,27 @@ function YamlPreview() {
     }
   }, [schema]);
 
+  const handleResizeStart = React.useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = useAppStore.getState().yamlPreviewWidth;
+    document.body.style.userSelect = 'none';
+
+    function onMouseMove(moveEvent: MouseEvent) {
+      useAppStore.getState().setYamlPreviewWidth(startWidth + (startX - moveEvent.clientX));
+    }
+    function onMouseUp() {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      document.body.style.removeProperty('user-select');
+    }
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  }, []);
+
   return (
-    <div id="lme-yaml-preview" style={yamlStyles.panel}>
+    <div id="lme-yaml-preview" style={{ ...yamlStyles.panel, width: yamlPreviewWidth }}>
+      <div style={yamlStyles.resizeHandle} onMouseDown={handleResizeStart} title="Drag to resize" />
       <div style={yamlStyles.header}>
         <span style={yamlStyles.title}>YAML Preview</span>
         {schema?.isDirty && <span style={yamlStyles.dirty}>● unsaved</span>}
@@ -193,11 +213,20 @@ const yamlStyles: Record<string, React.CSSProperties> = {
   panel: {
     display: 'flex',
     flexDirection: 'column',
-    width: 300,
+    position: 'relative',
     borderLeft: '1px solid var(--color-border-subtle)',
     background: 'var(--color-bg-deep)',
     flexShrink: 0,
     overflow: 'hidden',
+  },
+  resizeHandle: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 6,
+    cursor: 'col-resize',
+    zIndex: 10,
   },
   header: {
     display: 'flex',

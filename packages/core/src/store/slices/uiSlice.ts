@@ -21,6 +21,9 @@ const HIDE_TREE_ROOT_RANGE_EDGES_KEY = 'linkml-editor-hide-tree-root-range-edges
 
 export type RangeEdgesMode = 'show' | 'inline' | 'auto';
 
+export const YAML_PREVIEW_MIN_WIDTH = 300;
+export const YAML_PREVIEW_MAX_WIDTH = 600;
+
 function loadGroupByImportSource(): boolean {
   try {
     const raw = localStorage.getItem(GROUP_BY_IMPORT_SOURCE_KEY);
@@ -101,6 +104,7 @@ export interface UISlice {
   theme: Theme;
   projectPanelWidth: number; // px
   propertiesPanelWidth: number; // px
+  yamlPreviewWidth: number; // px
   toastQueue: Toast[];
   zoom: number; // canvas zoom level mirror for status bar
   syncStatus: SyncStatus; // null = not in cloud mode
@@ -131,6 +135,7 @@ export interface UISlice {
   setTheme(theme: Theme): void;
   setProjectPanelWidth(width: number): void;
   setPropertiesPanelWidth(width: number): void;
+  setYamlPreviewWidth(width: number): void;
   pushToast(toast: Omit<Toast, 'id'>): void;
   dismissToast(id: string): void;
   setZoom(zoom: number): void;
@@ -157,6 +162,7 @@ export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set) => ({
   theme: 'system',
   projectPanelWidth: 240,
   propertiesPanelWidth: 320,
+  yamlPreviewWidth: YAML_PREVIEW_MIN_WIDTH,
   toastQueue: [],
   zoom: 1,
   syncStatus: null,
@@ -182,6 +188,10 @@ export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set) => ({
 
   setPropertiesPanelWidth(width) {
     set({ propertiesPanelWidth: width });
+  },
+
+  setYamlPreviewWidth(width) {
+    set({ yamlPreviewWidth: Math.min(YAML_PREVIEW_MAX_WIDTH, Math.max(YAML_PREVIEW_MIN_WIDTH, width)) });
   },
 
   pushToast(toast) {
