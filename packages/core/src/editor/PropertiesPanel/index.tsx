@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { useAppStore } from '../../store/index.js';
-import { X } from '../../ui/icons/index.js';
+import { Minus } from '../../ui/icons/index.js';
 import { EmptyPanel } from './EmptyPanel.js';
 import { ClassPanel } from './ClassPanel.js';
 import { EnumPanel } from './EnumPanel.js';
@@ -72,7 +72,7 @@ export function PropertiesPanel() {
             ↪
           </button>
           <button style={styles.headerBtn} onClick={() => setPropertiesPanelOpen(false)} title="Minimize panel">
-            <X size={12} />
+            <Minus size={12} />
           </button>
         </div>
       </div>

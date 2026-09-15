@@ -18,7 +18,7 @@ import { useAppStore } from '../store/index.js';
 import { collectReferencedImportedEntities } from '../io/importResolver.js';
 import { usePlatform } from '../platform/PlatformContext.js';
 import { buildManifestData, writeEditorManifest } from '../io/editorManifest.js';
-import { X } from '../ui/icons/index.js';
+import { Minus } from '../ui/icons/index.js';
 import {
   buildAdjacency,
   getAncestors,
@@ -169,7 +169,7 @@ export function DisplayPanel() {
         <span style={styles.headerTitle}>Display</span>
         <div style={styles.headerActions}>
           <button style={styles.headerBtn} onClick={() => setDisplayPanelOpen(false)} title="Minimize panel">
-            <X size={12} />
+            <Minus size={12} />
           </button>
         </div>
       </div>

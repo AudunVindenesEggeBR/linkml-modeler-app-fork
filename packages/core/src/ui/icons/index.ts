@@ -9,6 +9,7 @@ export {
   GitBranch,
   Hexagon,
   Link2,
+  Minus,
   Monitor,
   Moon,
   PlayCircle,
