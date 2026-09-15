@@ -20,5 +20,6 @@ test-timing/
 !.claude/settings.json
 !.claude/hooks/
 !.claude/skills/
+!.claude/rules/
 .agents/
 .vitepress
