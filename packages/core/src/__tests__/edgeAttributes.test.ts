@@ -655,12 +655,38 @@ enums:
     expect(nodeHandleIds.sort()).toEqual(edgeHandleIds.sort());
   });
 
-  it('orders incoming handles deterministically by source name, then slot name', () => {
+  it('orders incoming handles by source name, then slot name, as a fallback when positions are unknown', () => {
+    // emptyCanvasLayout() -> no saved positions -> the position-based sort
+    // (Runde 4, Funn 2) has nothing to compare, so it falls back to the
+    // name-based tiebreak -- this test locks in that fallback behavior.
     const schema = parseYaml(CONVERGE_YAML);
     const graph = deriveGraph(schema, emptyCanvasLayout(), {}, [], {});
     const targetNode = graph.nodes.find((n) => n.id === 'Target');
     const handles = (targetNode?.data as { incomingRangeHandles?: Array<{ source: string }> }).incomingRangeHandles ?? [];
     expect(handles.map((h) => h.source)).toEqual(['SourceA', 'SourceB', 'SourceC']);
+  });
+
+  // specs/backlog/reduce-edge-crossings-elk-options.md, Runde 4, Funn 2:
+  // alphabetical-by-source-name ordering can be the exact REVERSE of actual
+  // source position, guaranteeing avoidable crossings. Confirmed empirically
+  // on samt-bu-schema.yaml's Skole class; this locks in the fix as a
+  // regression test using the same CONVERGE_YAML fixture as the test above,
+  // but with real positions this time.
+  it('orders incoming handles by ACTUAL SOURCE Y POSITION when known, not alphabetically', () => {
+    const schema = parseYaml(CONVERGE_YAML);
+    const layout = emptyCanvasLayout();
+    // Deliberately the REVERSE of alphabetical order: SourceC highest
+    // (smallest y), SourceA lowest (largest y). Target has no saved
+    // position, so side defaults uniformly for all three (keeps them in
+    // one group, isolating the within-group ordering being tested).
+    layout.nodes['SourceA'] = { x: 0, y: 200 };
+    layout.nodes['SourceB'] = { x: 0, y: 100 };
+    layout.nodes['SourceC'] = { x: 0, y: 0 };
+
+    const graph = deriveGraph(schema, layout, {}, [], {});
+    const targetNode = graph.nodes.find((n) => n.id === 'Target');
+    const handles = (targetNode?.data as { incomingRangeHandles?: Array<{ source: string }> }).incomingRangeHandles ?? [];
+    expect(handles.map((h) => h.source)).toEqual(['SourceC', 'SourceB', 'SourceA']);
   });
 
   it('does not add incoming handles for a target with only one incoming edge (no crowding to fix)', () => {
@@ -714,5 +740,49 @@ classes:
     const handles = (enumNode?.data as { incomingRangeHandles?: Array<{ id: string }> }).incomingRangeHandles ?? [];
     expect(handles.length).toBe(2);
     expect(new Set(handles.map((h) => h.id)).size).toBe(2);
+  });
+});
+
+// specs/backlog/reduce-edge-crossings-elk-options.md, Runde 4, Funn 1: even
+// with considerModelOrder correctly stacking a class's outgoing TARGETS in
+// declaration order (autoLayout.ts), the SOURCE class's own row/handle order
+// was always alphabetical regardless, undermining the straightness the
+// feature is meant to provide. Fix: resolvedSlots keeps its natural push
+// order (declaration order) instead of re-sorting alphabetically, but only
+// when considerModelOrder is on -- off (default) stays alphabetical, unchanged.
+describe('deriveGraph resolvedSlots order (Funn 1, considerModelOrder)', () => {
+  const ORDER_YAML = `
+id: https://example.org/ordertest
+name: ordertest
+prefixes:
+  linkml: https://w3id.org/linkml/
+default_prefix: ordertest
+imports:
+  - linkml:types
+classes:
+  Source:
+    attributes:
+      zebra:
+        range: string
+      apple:
+        range: string
+      mango:
+        range: string
+`.trim();
+
+  it('sorts rows alphabetically by default (considerModelOrder off, unchanged behavior)', () => {
+    const schema = parseYaml(ORDER_YAML);
+    const graph = deriveGraph(schema, emptyCanvasLayout(), {}, [], {});
+    const sourceNode = graph.nodes.find((n) => n.id === 'Source');
+    const rows = (sourceNode?.data as { resolvedSlots?: Array<{ slot: { name: string } }> }).resolvedSlots ?? [];
+    expect(rows.map((r) => r.slot.name)).toEqual(['apple', 'mango', 'zebra']);
+  });
+
+  it('keeps declaration order when considerModelOrder is on', () => {
+    const schema = parseYaml(ORDER_YAML);
+    const graph = deriveGraph(schema, emptyCanvasLayout(), {}, [], {}, new Set(), 'show', false, true);
+    const sourceNode = graph.nodes.find((n) => n.id === 'Source');
+    const rows = (sourceNode?.data as { resolvedSlots?: Array<{ slot: { name: string } }> }).resolvedSlots ?? [];
+    expect(rows.map((r) => r.slot.name)).toEqual(['zebra', 'apple', 'mango']);
   });
 });

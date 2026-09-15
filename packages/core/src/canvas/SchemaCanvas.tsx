@@ -480,8 +480,8 @@ function SchemaCanvasInner() {
   // Derive graph (imported entities rendered as ordinary flat nodes)
   const { nodes: derivedNodes, edges: derivedEdges } = useMemo(() => {
     if (!activeSchemaFile) return { nodes: [], edges: [] };
-    return deriveGraph(activeSchemaFile.schema, { ...effectiveLayout, labels: effectiveLabels }, {}, ghostEntities, allSchemaSlots, hiddenEdgeTypes, effectiveRangeEdgesMode, hideTreeRootRangeEdges);
-  }, [activeSchemaFile, ghostEntities, effectiveLayout, effectiveLabels, allSchemaSlots, hiddenEdgeTypes, effectiveRangeEdgesMode, hideTreeRootRangeEdges]);
+    return deriveGraph(activeSchemaFile.schema, { ...effectiveLayout, labels: effectiveLabels }, {}, ghostEntities, allSchemaSlots, hiddenEdgeTypes, effectiveRangeEdgesMode, hideTreeRootRangeEdges, considerModelOrder);
+  }, [activeSchemaFile, ghostEntities, effectiveLayout, effectiveLabels, allSchemaSlots, hiddenEdgeTypes, effectiveRangeEdgesMode, hideTreeRootRangeEdges, considerModelOrder]);
 
   useEffect(() => {
     setNodes(derivedNodes);

@@ -1,7 +1,7 @@
 # Spec: Fleire ELK-parametre/andre grep for å minimere kryssande kantar — alternativ
 
-Status: **Delvis implementert.** `considerModelOrder` (`PREFER_EDGES`) er implementert og verifisert — sjå "Runde 3" nedst. `greedySwitch.type` og `compaction.connectedComponents` er IKKJE tilrådde (verifisert null effekt/ikkje prioritert). Alternativ C (ELK-ruta range-kantar, for fullstendig kryss-kontroll) står framleis som eit ope, stort forslag.
-Dato: 2026-09-14
+Status: **Delvis implementert.** `considerModelOrder` (`PREFER_EDGES`) er implementert og verifisert — sjå "Runde 3". Runde 4 sine to funn (Funn 1 + Funn 2) er NO OGSÅ implementerte og verifiserte — sjå "Runde 5" nedst. `greedySwitch.type` og `compaction.connectedComponents` er IKKJE tilrådde. Alternativ C (ELK-ruta range-kantar) står framleis som eit ope, stort forslag.
+Dato: 2026-09-14 (runde 4: 2026-09-15)
 
 Ønske (ordrett, runde 1): "No lurer eg på om vi kan gjere nokon grep for å få mindre kryssande kantar. Finnes det parametre vi kan skru på i ELK eller andre måter vi kan minimere kryssande kantar ved å flytte på plasseringa av klassene?"
 
@@ -121,3 +121,99 @@ Brukaren skreiv "utfør PREFER_EDGES" — eksplisitt godkjenning for `PREFER_EDG
 **Ikkje verifisert manuelt i nettlesar** — visuell stadfesting av den nye "Schema order"-veljaren (spesielt på `enhetsregisteret-frivilligorganisasjonapi-schema.yaml`, der `FrivilligOrganisasjon` sine 6 mål no bør stable seg i deklarasjonsrekkjefølgje) bør gjerast ved neste rebuild/redeploy.
 
 **Attverande, ikkje implementert:** `greedySwitch.type` (ikkje tilrådd, verifisert null effekt), `compaction.connectedComponents` (ikkje prioritert), og Alternativ C (ELK-ruta range-kantar, stort sjølvstendig prosjekt) — sjå ope spørsmål 3 over, framleis ubesvara.
+
+## Runde 4 (2026-09-15) — nytt hovudfunn: to uavhengige, alfabetiske sorteringar undergrev `considerModelOrder`
+
+Ønske (ordrett): "Kva andre tiltak kan vi gjere for å få mindre overlappande range kantar?"
+
+### Funn 1 — kjeldekortet sine handtak følgjer IKKJE deklarasjonsrekkjefølgja, sjølv når `considerModelOrder` er PÅ
+
+`considerModelOrder` (Runde 3) styrer KOR ELK PLASSERER mål-nodane — stadfesta perfekt (byte-for-byte deklarasjonsrekkjefølgje). Men KOR PÅ KJELDEKORTET kvar kant faktisk GÅR UT FRÅ er ein heilt annan, uavhengig kodesti: `deriveGraph.ts` sorterer `resolvedSlots` (som avgjer rad-/handtak-rekkjefølgja via `classSlotMidY`) ALFABETISK etter slot-namn:
+
+```ts
+// deriveGraph.ts:274
+resolvedSlots.sort((a, b) => a.slot.name.localeCompare(b.slot.name));
+```
+
+Denne sorteringa bryr seg ikkje om `considerModelOrder` i det heile — han er alltid alfabetisk, uansett kva layout-innstilling som er vald.
+
+**Stadfesta empirisk mot `FrivilligOrganisasjon` (`enhetsregisteret-frivilligorganisasjonapi-schema.yaml`), med `considerModelOrder` PÅ:**
+
+| Attributt | Deklarasjons-indeks | Rad/handtak-indeks (alfabetisk) | Mål-stabel-indeks (ELK, no korrekt) |
+|---|---|---|---|
+| icnpokategorier → IcnpoKategori | 0 | 1 | 0 |
+| vedtekter → Vedtekter | 1 | **5 (sist)** | 1 |
+| grasrotandel → Grasrotandel | 2 | **0 (fyrst)** | 2 |
+| regnskapsrapportering → Regnskapsrapportering | 3 | 3 | 3 |
+| paategninger → Paategning | 4 | 2 | 4 |
+| relasjoner → Virksomhetsrelasjon | 5 | 4 | 5 |
+
+Mål-stabelen er PERFEKT ordna (kolonne 4 = kolonne 1, alltid). Men rad-/handtak-rekkjefølgja (kolonne 3) er HEILT ulik — t.d. "vedtekter" sitt handtak sit NEST NEDST på kortet (rad 5 av 6), sjølv om målet "Vedtekter" er stabla NEST ØVST (stabel-plass 1 av 6). Kanten frå "vedtekter" må difor gå frå BOTNEN av kjeldekortet HEILT OPP TIL NESTEN TOPPEN av mål-stabelen — akkurat den typen unødvendige sikk-sakk-rørsle `considerModelOrder` var meint å fjerne. Tilsvarande for "grasrotandel" (handtak øvst, mål midt i stabelen).
+
+**Konsekvens:** `considerModelOrder` løyser berre HALVPARTEN av problemet han er meint for — mål-SIDA er perfekt, men kjelde-SIDA (kor kanten fysisk går UT FRÅ) er framleis tilfeldig (alfabetisk) i høve til den same rekkjefølgja. To kantar med handtak i "feil" rekkjefølgje i høve til kvarandre vil framleis krysse kvarandre, sjølv om måla deira er perfekt stabla.
+
+### Funn 2 — innkomande handtak på MÅL-noden er sorterte alfabetisk etter KJELDE-namn, ikkje etter kjelda sin faktiske posisjon
+
+Same rotårsak-mønster, motsett side: `collectIncomingRangeHandles()` (lagt til i Runde 2/3 av `range-edge-collision-and-label-visibility.md`) sorterer dei innkomande handtaka på eit mål slik:
+
+```ts
+// deriveGraph.ts
+list.sort((a, b) => a.source.localeCompare(b.source) || a.slotName.localeCompare(b.slotName));
+```
+
+Alfabetisk etter KJELDE-KLASSENAMN — utan omsyn til kor kjeldene FAKTISK er plasserte på canvaset.
+
+**Stadfesta empirisk mot `Skole` (`samt-bu-schema.yaml`, 3 innkomande kantar på vest-sida):**
+
+| Kjelde | Alfabetisk handtak-rekkjefølgje (dagens) | Faktisk Y-posisjon | Rekkjefølgje etter faktisk posisjon |
+|---|---|---|---|
+| Basisgruppe | 1 (øvst) | y=770 (**nedst**) | 3 (nedst) |
+| Kontaktlaerer | 2 (midt) | y=699 (midt) | 2 (midt) |
+| Rektor | 3 (nedst) | y=609 (**øvst**) | 1 (øvst) |
+
+**Stikk motsett rekkjefølgje** — det øvste handtaket på Skole koplar til Basisgruppe, som faktisk sit NEDST på skjermen, medan det nedste handtaket koplar til Rektor, som faktisk sit ØVST. Dette GARANTERER at desse to kantane kryssar kvarandre — heilt unødvendig, sidan det einaste som trengst er å sortere etter faktisk Y-posisjon i staden for alfabetisk namn.
+
+### Forslag til fiks
+
+**Funn 2 (innkomande handtak): tilrådd som eit ubetinga, trygt fiks** — byt sorteringsnøkkelen frå `a.source.localeCompare(b.source)` til faktisk Y-posisjon (`layout.nodes[a.source]?.y - layout.nodes[b.source]?.y`, med alfabetisk som sekundær tiebreak for stabilitet når posisjonar er like/manglar). Dette har INGEN synleg kostnad eller åtferdsendring utanom å fjerne unødvendige kryssingar — det finst ingen god grunn til å halde fram med alfabetisk sortering her, sidan handtak-DOTTEN sjølv ikkje er noko brukaren "les" i rekkjefølgje (i motsetnad til klasse-eigenskapslista, som ER meint å lesast). Treng ikkje eit eige på/av-val — kan vere alltid-på.
+
+**Funn 1 (kjeldekort-handtak): treng eit brukarval, IKKJE eit ubetinga fiks** — å endre `resolvedSlots` sin sorteringsrekkjefølgje frå alfabetisk til deklarasjonsrekkjefølgje ville ENDRE KVA REKKJEFØLGJE EIGENSKAPANE FAKTISK VERT LISTA I på kvart einaste klassekort i heile appen — ei synleg, lesbarheits-relevant endring (alfabetisk er lettare å skanne/finne ein bestemt eigenskap i, deklarasjonsrekkjefølgje matchar YAML-fila men kan vere vilkårleg for lesaren). Tre alternativ:
+
+- **A — Ubetinga endring:** byt `resolvedSlots` sin sortering til deklarasjonsrekkjefølgje for ALLE klassar, alltid. Størst nytte (hjelper sjølv når `considerModelOrder` er av, sidan det framleis fjernar EITT tilfeldig avvik), men størst synleg åtferdsendring for alle brukarar, alltid.
+- **B — Kopla til `considerModelOrder`:** behald alfabetisk sortering som standard (uendra), men byt til deklarasjonsrekkjefølgje BERRE når `considerModelOrder` er PÅ. Gjer "Schema order"-valet til ein FULLSTENDIG, samanhengande funksjon (kjelde OG mål ordna likt) i staden for berre halvvegs, utan å endre standard-åtferda for nokon som ikkje har slått på valet.
+- **C — Ikkje rør listevisinga, berre handtak-POSISJONEN:** hald fram med alfabetisk LISTEVISING (lesbarheit uendra), men gjer sjølve HANDTAK-DOTTEN sin Y-posisjon uavhengig av kva rad han visuelt står ved (bruk deklarasjonsindeks for handtak-Y, ikkje rad-indeks). **Ikkje tilrådd** — ville gjort at handtak-dotten "flyt vekk" frå si eiga rad-tekst, eit anna, truleg meir forvirrande visuelt avvik enn det som vert fiksa (den vesle dotten ved sida av "vedtekter"-teksten ville ikkje lenger vere DER "vedtekter" står skrive).
+
+**Tilråding:** Funn 2 åleine (trygt, ubetinga). For Funn 1: **Alternativ B** — kopla til `considerModelOrder`, gjer det eksisterande valet heilskapleg i staden for å innføre ei ny, brei åtferdsendring for alle.
+
+## Testcase / akseptansekriterium (Runde 4)
+
+1. **Funn 2:** syntetisk skjema med eitt mål og 3 kjelder plasserte i KJEND, ikkje-alfabetisk Y-rekkjefølgje; stadfest at `incomingRangeHandles` sin rekkjefølgje matchar den faktiske Y-rekkjefølgja, ikkje alfabetisk kjeldenamn.
+2. **Funn 1 (viss Alternativ B godkjent):** `resolvedSlots` sin rekkjefølgje matchar deklarasjonsrekkjefølgje NÅR `considerModelOrder` er PÅ, framleis alfabetisk NÅR AV (regresjon).
+3. Manuell stadfesting på `enhetsregisteret-frivilligorganisasjonapi-schema.yaml`/`samt-bu-schema.yaml`: synleg færre kryssande/sikk-sakk-kantar med begge fiksane aktive samstundes.
+
+## Runde 5 (2026-09-15) — dei tilrådde tiltaka for Funn 1 og 2 implementerte
+
+Brukaren skreiv "utfør tilrådde tiltak for funn 1 og 2" — eksplisitt godkjenning for dei TILRÅDDE alternativa spesifikt (Funn 2 sitt ubetinga fiks, Funn 1 sitt Alternativ B), ikkje dei andre alternativa (A/C for Funn 1) som vart lista som ikkje-tilrådde.
+
+**Funn 2 implementert, ubetinga (`deriveGraph.ts`, `collectIncomingRangeHandles()`):** sorteringsnøkkelen for innkomande handtak bytt frå `a.source.localeCompare(b.source)` til faktisk Y-posisjon (`layout.nodes[a.source]?.y - layout.nodes[b.source]?.y`), med namn-basert samanlikning som fallback når posisjon manglar eller er lik (for determinisme, t.d. med `emptyCanvasLayout()` i testar).
+
+**Funn 1 implementert, Alternativ B (`deriveGraph.ts`, `deriveGraph()`):** nytt `considerModelOrder = false`-parameter. Den eksisterande `resolvedSlots.sort(...)` (alfabetisk) køyrer no BERRE `if (!considerModelOrder)` — når PÅ, held `resolvedSlots` fram med sin naturlege push-rekkjefølgje (eigne attributt i YAML-rekkjefølgje, så eigne skjema-slots i YAML-rekkjefølgje, så nedarva), som samsvarer med den same rekkjefølgja `elk.layered.considerModelOrder.strategy` (autoLayout.ts) alt nyttar for å stable måla. `SchemaCanvas.tsx` sin `deriveGraph(...)`-kall oppdatert til å sende det eksisterande `considerModelOrder`-tilstandsfeltet vidare (attgjenbruk av same togle som Runde 3 alt la til, ingen ny UI-kontroll naudsynt).
+
+**Testar lagt til** (`edgeAttributes.test.ts`):
+- Funn 2: éin test som stadfestar namn-basert fallback (uendra åtferd med `emptyCanvasLayout()`), éin NY test med eksplisitte, bevisst REVERSERT-alfabetiske Y-posisjonar som stadfestar handtaka no følgjer faktisk posisjon.
+- Funn 1: ny `describe('deriveGraph resolvedSlots order (Funn 1, considerModelOrder)')` med 2 testar — alfabetisk som standard (av, uendra), deklarasjonsrekkjefølgje når PÅ.
+
+**Empirisk re-stadfesta mot NØYAKTIG dei same røyndoms-tilfella som avdekte funna** (mellombels debug-testskript, køyrt éin gong, sletta etterpå):
+- `FrivilligOrganisasjon`: rendra rad-rekkjefølgje er no BYTE-FOR-BYTE lik deklarasjonsrekkjefølgja (`icnpokategorier, vedtekter, grasrotandel, regnskapsrapportering, paategninger, relasjoner`) når `considerModelOrder` er PÅ — stadfesta at Funn 1 sitt gap er lukka.
+- `Skole` (samt-bu-schema.yaml): dei 3 vest-side innkomande handtaka er no ordna `[Rektor, Kontaktlaerer, Basisgruppe]` — nøyaktig same rekkjefølgje som faktisk Y-posisjon, IKKJE lenger den reverserte alfabetiske rekkjefølgja frå før.
+
+**Verifisert:**
+- Full typecheck av `packages/core` (`tsc --noEmit`): rein.
+- `pnpm exec eslint packages/*/src --ext .ts,.tsx` (heile repoet): 0 feil, 0 åtvaringar.
+- `scripts/check-token-usage.sh`: PASS.
+- `edgeAttributes.test.ts` åleine: 48/48 testar grøne (45 eksisterande + 3 nye).
+- Full `packages/core`-testpakke: 277/277 testar grøne (**null faktiske testfeil**), 14 filer feila å STARTE med den alt-dokumenterte `[vitest-pool-runner]`-infrastrukturflaksen — ingen reelle regresjonar.
+
+**Ikkje implementert (ikkje del av godkjenninga denne runda):** Alternativ A/C for Funn 1, `greedySwitch.type`, `compaction.connectedComponents`, og Alternativ C frå Runde 1/2 (ELK-ruta range-kantar) — spec-en held difor fram i `specs/backlog/`.
+
+**Ikkje verifisert manuelt i nettlesar** — bør stadfestast ved neste rebuild/redeploy (hugs `podman-compose down` FØR `up --build -d`).

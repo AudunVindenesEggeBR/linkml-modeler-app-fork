@@ -138,10 +138,23 @@ function collectIncomingRangeHandles(
     }
   }
 
-  // Stable order within each target/side so handles don't jump around when
-  // unrelated parts of the schema change.
+  // Order by each source's actual Y position, not alphabetically by source
+  // name -- these handles are always stacked vertically (east/west side,
+  // regardless of TB/BT/LR/RL direction), so aligning stack order with
+  // actual position avoids crossings that alphabetical order guarantees
+  // whenever source names and source positions disagree. Confirmed
+  // empirically on Skole (samt-bu-schema.yaml, 3 incoming edges): the
+  // alphabetical order was the exact REVERSE of actual Y position. Falls
+  // back to source/slot name when a position is missing or tied, for
+  // deterministic output. See
+  // specs/backlog/reduce-edge-crossings-elk-options.md, Runde 4, Funn 2.
   for (const list of byTarget.values()) {
-    list.sort((a, b) => a.source.localeCompare(b.source) || a.slotName.localeCompare(b.slotName));
+    list.sort((a, b) => {
+      const ay = layout.nodes[a.source]?.y;
+      const by = layout.nodes[b.source]?.y;
+      if (ay !== undefined && by !== undefined && ay !== by) return ay - by;
+      return a.source.localeCompare(b.source) || a.slotName.localeCompare(b.slotName);
+    });
   }
   return byTarget;
 }
@@ -214,7 +227,8 @@ export function deriveGraph(
   allSchemaSlots: Record<string, SlotDefinition> = {},
   hiddenEdgeTypes: ReadonlySet<string> = new Set(),
   rangeEdgesMode: RangeEdgesMode = 'show',
-  hideTreeRootRangeEdges = false
+  hideTreeRootRangeEdges = false,
+  considerModelOrder = false
 ): DerivedGraph {
   const nodes: Node<CanvasNodeData>[] = [];
   const edges: Edge[] = [];
@@ -271,7 +285,22 @@ export function deriveGraph(
       }
     }
 
-    resolvedSlots.sort((a, b) => a.slot.name.localeCompare(b.slot.name));
+    // Alphabetical by default (easiest to scan/find a property). When
+    // considerModelOrder is on, keep the push order above instead (own
+    // attributes, then own schema-level slots, then inherited -- each
+    // already in declaration order) so a slot's row/handle position lines
+    // up with the same declaration order ELK uses to stack its target
+    // (autoLayout.ts's considerModelOrder option) -- otherwise the target
+    // stacking is correct but the source's own handle for that edge can
+    // still exit from an unrelated row, forcing exactly the zigzag
+    // considerModelOrder is meant to remove. Confirmed empirically on
+    // FrivilligOrganisasjon (enhetsregisteret-frivilligorganisasjonapi-
+    // schema.yaml): "vedtekter"'s handle sat 2nd-from-bottom while its
+    // target "Vedtekter" was stacked 2nd-from-top. See
+    // specs/backlog/reduce-edge-crossings-elk-options.md, Runde 4, Funn 1.
+    if (!considerModelOrder) {
+      resolvedSlots.sort((a, b) => a.slot.name.localeCompare(b.slot.name));
+    }
 
     const nodeData: ClassNodeData = {
       entityId: className,
