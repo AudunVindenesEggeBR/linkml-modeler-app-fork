@@ -22,8 +22,10 @@ export {
   collectImportedEntities,
   collectReferencedImportedEntities,
   findMissingImport,
+  summarizeFailedImports,
 } from './io/importResolver.js';
-export type { SchemaDependency, ImportedEntity } from './io/importResolver.js';
+export { isGraphNodeEntity } from './io/importResolver.js';
+export type { SchemaDependency, ImportedEntity, FailedImport, ResolveImportsResult } from './io/importResolver.js';
 export * from './canvas/index.js';
 export * from './editor/index.js';
 export * from './validation/index.js';

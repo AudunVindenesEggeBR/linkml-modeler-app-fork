@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   isLocalImport,
   isUrlImport,
+  isGraphNodeEntity,
   resolveImportPath,
   buildDependencyGraph,
   collectImportedEntities,
@@ -16,6 +17,7 @@ import {
   emptySchema,
   emptyClassDefinition,
   emptyEnumDefinition,
+  emptySlotDefinition,
 } from '../../model/index.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -309,6 +311,83 @@ describe('collectImportedEntities', () => {
     const result = collectImportedEntities(main, [main, unrelated]);
     expect(result.find((e) => e.name === 'Ghost')).toBeFalsy();
   });
+
+  // ── Funn 2 / B1 (specs/backlog/cross-repo-import-resolution-gaps.md): a
+  // schema that defines only `types:` (e.g. brreg-felles-typer, no
+  // classes/enums at all) must still surface its content when imported.
+  it('collects types from an imported schema that defines only types', () => {
+    const felles = makeSchemaFile('felles.yaml', {
+      schema: {
+        ...emptySchema('felles', 'https://example.org/felles', 'felles'),
+        types: { Tekst50: { name: 'Tekst50', base: 'str' } },
+      },
+    });
+    const main = makeSchemaFile('schemas/main.yaml', {
+      schema: {
+        ...emptySchema('main', 'https://example.org/main', 'main'),
+        imports: ['../felles'],
+      },
+    });
+
+    const result = collectImportedEntities(main, [main, felles]);
+    expect(result.find((e) => e.name === 'Tekst50' && e.type === 'type')).toBeTruthy();
+  });
+
+  it('collects schema-level slots and subsets from imported schemas', () => {
+    const shared = makeSchemaFile('shared.yaml', {
+      schema: {
+        ...emptySchema('shared', 'https://example.org/shared', 'shared'),
+        slots: { name: emptySlotDefinition('name') },
+        subsets: { BasicSubset: { name: 'BasicSubset' } },
+      },
+    });
+    const main = makeSchemaFile('schemas/main.yaml', {
+      schema: {
+        ...emptySchema('main', 'https://example.org/main', 'main'),
+        imports: ['../shared'],
+      },
+    });
+
+    const result = collectImportedEntities(main, [main, shared]);
+    expect(result.find((e) => e.name === 'name' && e.type === 'slot')).toBeTruthy();
+    expect(result.find((e) => e.name === 'BasicSubset' && e.type === 'subset')).toBeTruthy();
+  });
+
+  it('normalizes an absolute URL import missing its extension before matching, so its types are recognized', () => {
+    // Mirrors the real brreg case: the imports: entry has no extension, but
+    // the fetched SchemaFile's filePath (set by loadSchemaFromUrl) does.
+    const remote = makeSchemaFile('https://example.org/dcat-schema.yaml', {
+      schema: {
+        ...emptySchema('dcat', 'https://example.org/dcat', 'dcat'),
+        classes: { Dataset: emptyClassDefinition('Dataset') },
+      },
+    });
+    const main = makeSchemaFile('main.yaml', {
+      schema: {
+        ...emptySchema('main', 'https://example.org/main', 'main'),
+        imports: ['https://example.org/dcat-schema'], // no extension, as LinkML convention allows
+      },
+    });
+
+    const result = collectImportedEntities(main, [main, remote]);
+    expect(result.find((e) => e.name === 'Dataset')).toBeTruthy();
+  });
+});
+
+// ── isGraphNodeEntity ─────────────────────────────────────────────────────────
+
+describe('isGraphNodeEntity', () => {
+  it('is true for class and enum entities', () => {
+    expect(isGraphNodeEntity({ name: 'A', type: 'class', sourceFilePath: 'a.yaml', schema: emptySchema('a', 'https://example.org/a', 'a') })).toBe(true);
+    expect(isGraphNodeEntity({ name: 'B', type: 'enum', sourceFilePath: 'a.yaml', schema: emptySchema('a', 'https://example.org/a', 'a') })).toBe(true);
+  });
+
+  it('is false for slot, type, and subset entities (never rendered as canvas nodes)', () => {
+    const schema = emptySchema('a', 'https://example.org/a', 'a');
+    expect(isGraphNodeEntity({ name: 'C', type: 'slot', sourceFilePath: 'a.yaml', schema })).toBe(false);
+    expect(isGraphNodeEntity({ name: 'D', type: 'type', sourceFilePath: 'a.yaml', schema })).toBe(false);
+    expect(isGraphNodeEntity({ name: 'E', type: 'subset', sourceFilePath: 'a.yaml', schema })).toBe(false);
+  });
 });
 
 // ── findMissingImport ─────────────────────────────────────────────────────────
@@ -378,6 +457,46 @@ describe('findMissingImport', () => {
       },
     });
     expect(findMissingImport('Status', active, [active])).toBeNull();
+  });
+
+  // ── Funn 2 / B3 (specs/backlog/cross-repo-import-resolution-gaps.md) ────────
+  it('returns null when range is defined locally as a type', () => {
+    const active = makeSchemaFile('main.yaml', {
+      schema: {
+        ...emptySchema('main', 'https://example.org/main', 'main'),
+        types: { Tekst50: { name: 'Tekst50', base: 'str' } },
+      },
+    });
+    expect(findMissingImport('Tekst50', active, [active])).toBeNull();
+  });
+
+  it('returns the import path when range is a type defined in another loaded schema', () => {
+    const felles = makeSchemaFile('felles.yaml', {
+      schema: {
+        ...emptySchema('felles', 'https://example.org/felles', 'felles'),
+        types: { Tekst50: { name: 'Tekst50', base: 'str' } },
+      },
+    });
+    const main = makeSchemaFile('schemas/main.yaml');
+    const result = findMissingImport('Tekst50', main, [main, felles]);
+    expect(result).not.toBeNull();
+    expect(result).toContain('felles');
+  });
+
+  it('returns null for a type that is already imported', () => {
+    const felles = makeSchemaFile('felles.yaml', {
+      schema: {
+        ...emptySchema('felles', 'https://example.org/felles', 'felles'),
+        types: { Tekst50: { name: 'Tekst50', base: 'str' } },
+      },
+    });
+    const main = makeSchemaFile('schemas/main.yaml', {
+      schema: {
+        ...emptySchema('main', 'https://example.org/main', 'main'),
+        imports: ['../felles'],
+      },
+    });
+    expect(findMissingImport('Tekst50', main, [main, felles])).toBeNull();
   });
 });
 
@@ -482,11 +601,11 @@ describe('resolveImports', () => {
     };
   }
 
-  it('returns empty array when no imports to resolve', async () => {
+  it('returns empty loaded/failed when no imports to resolve', async () => {
     const sf = makeSchemaFile('main.yaml');
     const platform = makePlatform({});
     const result = await resolveImports([sf], platform as never, '');
-    expect(result).toEqual([]);
+    expect(result).toEqual({ loaded: [], failed: [] });
   });
 
   it('resolves a local import file', async () => {
@@ -498,10 +617,11 @@ describe('resolveImports', () => {
       },
     });
     const platform = makePlatform({ 'schemas/common.yaml': commonYaml });
-    const result = await resolveImports([main], platform as never, '');
-    expect(result.length).toBe(1);
-    expect(result[0].filePath).toBe('schemas/common.yaml');
-    expect(result[0].isReadOnly).toBe(true);
+    const { loaded, failed } = await resolveImports([main], platform as never, '');
+    expect(loaded.length).toBe(1);
+    expect(loaded[0].filePath).toBe('schemas/common.yaml');
+    expect(loaded[0].isReadOnly).toBe(true);
+    expect(failed).toEqual([]);
   });
 
   it('skips already-loaded schemas', async () => {
@@ -513,11 +633,12 @@ describe('resolveImports', () => {
       },
     });
     const platform = makePlatform({});
-    const result = await resolveImports([main, common], platform as never, '');
-    expect(result).toEqual([]);
+    const { loaded, failed } = await resolveImports([main, common], platform as never, '');
+    expect(loaded).toEqual([]);
+    expect(failed).toEqual([]);
   });
 
-  it('returns empty when a local file fails to load', async () => {
+  it('reports a local file that fails to load in `failed`, not silently', async () => {
     const main = makeSchemaFile('main.yaml', {
       schema: {
         ...emptySchema('main', 'https://example.org/main', 'main'),
@@ -525,8 +646,11 @@ describe('resolveImports', () => {
       },
     });
     const platform = makePlatform({});
-    const result = await resolveImports([main], platform as never, '');
-    expect(result).toEqual([]);
+    const { loaded, failed } = await resolveImports([main], platform as never, '');
+    expect(loaded).toEqual([]);
+    expect(failed).toHaveLength(1);
+    expect(failed[0].importPath).toBe('missing.yaml');
+    expect(failed[0].reason).toContain('File not found');
   });
 
   it('skips namespace imports (linkml:types)', async () => {
@@ -537,8 +661,9 @@ describe('resolveImports', () => {
       },
     });
     const platform = makePlatform({});
-    const result = await resolveImports([main], platform as never, '');
-    expect(result).toEqual([]);
+    const { loaded, failed } = await resolveImports([main], platform as never, '');
+    expect(loaded).toEqual([]);
+    expect(failed).toEqual([]);
   });
 
   it('resolves transitive imports', async () => {
@@ -554,9 +679,9 @@ describe('resolveImports', () => {
       'schemas/common.yaml': commonYaml,
       'schemas/base.yaml': baseYaml,
     });
-    const result = await resolveImports([main], platform as never, '');
-    expect(result.length).toBe(2);
-    const filePaths = result.map((f) => f.filePath);
+    const { loaded } = await resolveImports([main], platform as never, '');
+    expect(loaded.length).toBe(2);
+    const filePaths = loaded.map((f) => f.filePath);
     expect(filePaths).toContain('schemas/common.yaml');
     expect(filePaths).toContain('schemas/base.yaml');
   });
@@ -575,8 +700,8 @@ describe('resolveImports', () => {
       'depth2.yaml': depth2Yaml,
     });
     // maxDepth=1 should only load depth1, not depth2
-    const result = await resolveImports([main], platform as never, '', 1);
-    const filePaths = result.map((f) => f.filePath);
+    const { loaded } = await resolveImports([main], platform as never, '', 1);
+    const filePaths = loaded.map((f) => f.filePath);
     expect(filePaths).toContain('depth1.yaml');
     expect(filePaths).not.toContain('depth2.yaml');
   });
@@ -603,9 +728,64 @@ describe('resolveImports', () => {
         },
       });
       const platform = makePlatform({});
-      const result = await resolveImports([main], platform as never, '');
-      expect(result.length).toBe(1);
-      expect(result[0].filePath).toBe('https://example.org/schemas/common.yaml');
+      const { loaded } = await resolveImports([main], platform as never, '');
+      expect(loaded.length).toBe(1);
+      expect(loaded[0].filePath).toBe('https://example.org/schemas/common.yaml');
+    } finally {
+      globalThis.fetch = origFetch;
+    }
+  });
+
+  // ── Funn 1 (specs/backlog/cross-repo-import-resolution-gaps.md): absolute
+  // URL imports lacking a file extension used to be fetched literally and
+  // silently dropped on a 404. They must now be fetched with `.yaml`
+  // appended, the same way relative-to-URL imports already were.
+  it('appends .yaml to an absolute URL import that has no extension', async () => {
+    const targetYaml = 'id: https://example.org/dcat\nname: dcat\n';
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url === 'https://example.org/schemas/dcat-schema.yaml') {
+        return { ok: true, text: async () => targetYaml };
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = fetchMock as never;
+
+    try {
+      const main = makeSchemaFile('main.yaml', {
+        schema: {
+          ...emptySchema('main', 'https://example.org/main', 'main'),
+          imports: ['https://example.org/schemas/dcat-schema'],
+        },
+      });
+      const platform = makePlatform({});
+      const { loaded, failed } = await resolveImports([main], platform as never, '');
+      expect(failed).toEqual([]);
+      expect(loaded.length).toBe(1);
+      expect(loaded[0].filePath).toBe('https://example.org/schemas/dcat-schema.yaml');
+    } finally {
+      globalThis.fetch = origFetch;
+    }
+  });
+
+  it('reports a real 404 (even after the .yaml retry) in `failed` with the raw HTTP status, not a guessed diagnosis', async () => {
+    const fetchMock = vi.fn(async () => ({ ok: false, status: 404, statusText: 'Not Found' }));
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = fetchMock as never;
+
+    try {
+      const main = makeSchemaFile('main.yaml', {
+        schema: {
+          ...emptySchema('main', 'https://example.org/main', 'main'),
+          imports: ['https://example.org/schemas/missing-schema'],
+        },
+      });
+      const platform = makePlatform({});
+      const { loaded, failed } = await resolveImports([main], platform as never, '');
+      expect(loaded).toEqual([]);
+      expect(failed).toHaveLength(1);
+      expect(failed[0].importPath).toBe('https://example.org/schemas/missing-schema.yaml');
+      expect(failed[0].reason).toContain('404');
     } finally {
       globalThis.fetch = origFetch;
     }

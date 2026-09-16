@@ -60,6 +60,7 @@ import {
   createNewProject,
   loadDemoSchemaFromUrl,
   openProjectFromDirectory,
+  summarizeFailedImports,
   emptyCanvasLayout,
   type SchemaFile,
   type Project,
@@ -71,6 +72,7 @@ import { AuthProvider } from './auth/AuthContext.js';
 import { SignInPrompt } from './components/SignInPrompt.js';
 import { UserMenu } from './components/UserMenu.js';
 import { SyncStatusIndicator } from './components/SyncStatusIndicator.js';
+import { NotificationHistoryButton } from './components/NotificationHistoryButton.js';
 import { ProjectSwitcherDialog } from './components/ProjectSwitcherDialog.js';
 import { WebProjectRegistry } from './platform/ProjectRegistry.js';
 import { DemoBanner, IS_GITHUB_PAGES } from './components/DemoBanner.js';
@@ -547,6 +549,7 @@ function App() {
         </div>
         <div style={styles.headerRight}>
           <SyncStatusIndicator />
+          <NotificationHistoryButton />
           {isDirty && syncStatus === null && <span style={styles.dirtyBadge}>● unsaved changes</span>}
           {isSaving && <span style={styles.savingBadge}>saving…</span>}
           <UserMenu />
@@ -779,13 +782,15 @@ async function bootstrap() {
       },
       /** Scan an OPFS directory for LinkML schemas and open as project. */
       async openProjectFromPath(dirPath: string) {
-        const { project, hiddenSchemaIds, views, activeViewId, subsetLayouts } = await openProjectFromDirectory(dirPath, platformRef.current);
+        const { project, hiddenSchemaIds, views, activeViewId, subsetLayouts, failedImports } = await openProjectFromDirectory(dirPath, platformRef.current);
         if (project.schemas.length > 0) {
           useAppStore.getState().setProject(project);
           useAppStore.getState().setHiddenSchemaIds(hiddenSchemaIds);
           useAppStore.getState().setViews(views);
           useAppStore.getState().setSubsetLayouts(subsetLayouts);
           useAppStore.getState().setActiveViewId(activeViewId);
+          const failedImportToast = summarizeFailedImports(failedImports);
+          if (failedImportToast) useAppStore.getState().pushToast(failedImportToast);
         }
       },
       /** Set the active project's rootPath so Ctrl+S writes to OPFS directly. */

@@ -11,7 +11,7 @@
 import ELK from 'elkjs/lib/elk.bundled.js';
 import type { ElkNode, ElkExtendedEdge } from 'elkjs/lib/elk-api.js';
 import type { LinkMLSchema, CanvasLayout, EdgeLayout, ClassDefinition, EnumDefinition, SlotDefinition } from '../model/index.js';
-import type { ImportedEntity } from '../io/importResolver.js';
+import { isGraphNodeEntity, type ImportedEntity } from '../io/importResolver.js';
 import { CLASS_SLOT_LIMIT, ENUM_VALUE_LIMIT } from './nodeLimits.js';
 
 // Node dimensions used for layout calculations. ClassNode/EnumNode have no
@@ -325,6 +325,7 @@ export async function runAutoLayout(
   // ── Add imported entities as flat leaf nodes ──────────────────────────────
   const allImportedIds = new Set<string>();
   for (const entity of ghostEntities) {
+    if (!isGraphNodeEntity(entity)) continue; // slots/types/subsets never get their own canvas node
     if (localIds.has(entity.name)) continue; // skip if local definition exists
     allImportedIds.add(entity.name);
     const size = entity.type === 'class'

@@ -27,11 +27,21 @@ export function isUrlImport(importStr: string): boolean {
 }
 
 /**
+ * Adds a `.yaml` extension to a path/URL if it doesn't already end in
+ * `.yaml`/`.yml`. LinkML `imports:` entries conventionally omit the
+ * extension — the resolver is expected to append it, the same way LinkML's
+ * own reference implementation does.
+ */
+function withYamlExtension(pathOrUrl: string): string {
+  return pathOrUrl.endsWith('.yaml') || pathOrUrl.endsWith('.yml') ? pathOrUrl : `${pathOrUrl}.yaml`;
+}
+
+/**
  * Resolves a relative import string against a base URL using the URL constructor.
  * Adds `.yaml` extension if no extension is present.
  */
 function resolveImportAsUrl(importStr: string, baseUrl: string): string {
-  const withExt = importStr.endsWith('.yaml') || importStr.endsWith('.yml') ? importStr : `${importStr}.yaml`;
+  const withExt = withYamlExtension(importStr);
   try {
     return new URL(withExt, baseUrl).href;
   } catch {
@@ -53,9 +63,7 @@ export function resolveImportPath(importStr: string, schemaFilePath: string, _ro
   let resolved = schemaDir ? `${schemaDir}/${importStr}` : importStr;
 
   // Add .yaml extension if missing
-  if (!resolved.endsWith('.yaml') && !resolved.endsWith('.yml')) {
-    resolved += '.yaml';
-  }
+  resolved = withYamlExtension(resolved);
 
   // Normalize path segments (handle ../ etc.)
   resolved = normalizePath(resolved);
@@ -136,26 +144,66 @@ export function normalizeSchemaUrl(url: string): string {
 }
 
 /**
+ * Fully normalizes a URL import string the same way `loadSchemaFromUrl` does
+ * (github blob rewrite + `.yaml` extension), so that dependency-graph lookups
+ * (`collectImportedEntities`, `findMissingImport`) key on the same string
+ * that ends up as the fetched SchemaFile's `filePath`. Without this, an
+ * absolute `imports:` URL that needed normalizing (e.g. no extension) would
+ * fetch correctly but never be recognized as "imported by" the active schema.
+ */
+function normalizeUrlImport(url: string): string {
+  return withYamlExtension(normalizeSchemaUrl(url));
+}
+
+/** A schema import that could not be loaded, with the raw (non-diagnosed) reason. */
+export interface FailedImport {
+  importPath: string;
+  reason: string;
+}
+
+/**
+ * Builds a single toast-shaped summary for a batch of failed imports (or null
+ * if there were none), honest about the raw reason rather than a guessed
+ * diagnosis — per CLAUDE.md's "no security-by-obscurity" error-handling rule.
+ * Multiple failures are combined into one toast (with the per-import detail
+ * in the message) instead of one toast per failure, to avoid flooding the
+ * overlay when many imports fail at once.
+ */
+export function summarizeFailedImports(failed: FailedImport[]): { message: string; severity: 'warning' } | null {
+  if (failed.length === 0) return null;
+  if (failed.length === 1) {
+    const [f] = failed;
+    return { message: `Could not load imported schema "${f.importPath}" — ${f.reason}`, severity: 'warning' };
+  }
+  const list = failed.map((f) => `"${f.importPath}" (${f.reason})`).join('; ');
+  return { message: `${failed.length} imports could not be loaded: ${list}`, severity: 'warning' };
+}
+
+type LoadResult = { file: SchemaFile } | { error: string };
+
+/**
  * Fetches a schema from a remote URL and returns it as a read-only SchemaFile.
  */
-async function loadSchemaFromUrl(url: string): Promise<SchemaFile | null> {
-  const resolvedUrl = normalizeSchemaUrl(url);
+async function loadSchemaFromUrl(url: string): Promise<LoadResult> {
+  const resolvedUrl = normalizeUrlImport(url);
   try {
     const response = await fetch(resolvedUrl);
-    if (!response.ok) return null;
+    if (!response.ok) return { error: `HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ''}` };
     const content = await response.text();
     const schema = parseYaml(content);
     return {
-      id: crypto.randomUUID(),
-      filePath: resolvedUrl,
-      schema,
-      isDirty: false,
-      canvasLayout: emptyCanvasLayout(),
-      isReadOnly: true,
-      sourceUrl: resolvedUrl,
+      file: {
+        id: crypto.randomUUID(),
+        filePath: resolvedUrl,
+        schema,
+        isDirty: false,
+        canvasLayout: emptyCanvasLayout(),
+        isReadOnly: true,
+        sourceUrl: resolvedUrl,
+      },
     };
-  } catch {
-    return null;
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) };
   }
 }
 
@@ -166,28 +214,38 @@ async function loadSchemaFile(
   filePath: string,
   platform: PlatformAPI,
   rootPath: string
-): Promise<SchemaFile | null> {
+): Promise<LoadResult> {
   try {
     const absPath = rootPath ? `${rootPath}/${filePath}` : filePath;
     const content = await platform.readFile(absPath);
     const schema = parseYaml(content);
     return {
-      id: crypto.randomUUID(),
-      filePath,
-      schema,
-      isDirty: false,
-      canvasLayout: emptyCanvasLayout(),
-      isReadOnly: true,
+      file: {
+        id: crypto.randomUUID(),
+        filePath,
+        schema,
+        isDirty: false,
+        canvasLayout: emptyCanvasLayout(),
+        isReadOnly: true,
+      },
     };
-  } catch {
-    return null;
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) };
   }
+}
+
+export interface ResolveImportsResult {
+  /** Newly loaded read-only SchemaFile entries (does not include the base schemas passed in). */
+  loaded: SchemaFile[];
+  /** Imports that were recognized but could not be fetched/parsed, with the raw (non-diagnosed) reason. */
+  failed: FailedImport[];
 }
 
 /**
  * Resolves all local imports from the given schemas, loading any that are not
- * already loaded. Returns a flat list of new read-only SchemaFile entries
- * (does not include the base schemas passed in).
+ * already loaded. Returns newly loaded schemas plus any imports that failed
+ * to load (per CLAUDE.md's "no silent failures" policy — a failed import is
+ * reported, never just dropped).
  *
  * Only resolves one level deep — call recursively if needed, but in practice
  * the caller should pass all known schemas so duplicates are skipped.
@@ -197,7 +255,7 @@ export async function resolveImports(
   platform: PlatformAPI,
   rootPath: string,
   maxDepth = 5
-): Promise<SchemaFile[]> {
+): Promise<ResolveImportsResult> {
   const loaded = new Map<string, SchemaFile>();
   for (const s of schemas) {
     loaded.set(s.filePath, s);
@@ -215,7 +273,8 @@ export async function resolveImports(
 
     for (const imp of schema.schema.imports) {
       if (isUrlImport(imp)) {
-        if (!loaded.has(imp)) queue.push({ filePath: imp, depth: 1 });
+        const resolved = normalizeUrlImport(imp);
+        if (!loaded.has(resolved)) queue.push({ filePath: resolved, depth: 1 });
       } else if (isLocalImport(imp)) {
         if (urlBase) {
           const resolved = resolveImportAsUrl(imp, urlBase);
@@ -229,15 +288,21 @@ export async function resolveImports(
   }
 
   const newFiles: SchemaFile[] = [];
+  const failed: FailedImport[] = [];
 
   while (queue.length > 0) {
     const { filePath, depth } = queue.shift()!;
     if (loaded.has(filePath) || depth > maxDepth) continue;
 
-    const file = isUrlImport(filePath)
+    const result = isUrlImport(filePath)
       ? await loadSchemaFromUrl(filePath)
       : await loadSchemaFile(filePath, platform, rootPath);
-    if (!file) continue;
+
+    if ('error' in result) {
+      failed.push({ importPath: filePath, reason: result.error });
+      continue;
+    }
+    const file = result.file;
 
     loaded.set(filePath, file);
     newFiles.push(file);
@@ -251,7 +316,8 @@ export async function resolveImports(
 
       for (const imp of file.schema.imports) {
         if (isUrlImport(imp)) {
-          if (!loaded.has(imp)) queue.push({ filePath: imp, depth: depth + 1 });
+          const resolved = normalizeUrlImport(imp);
+          if (!loaded.has(resolved)) queue.push({ filePath: resolved, depth: depth + 1 });
         } else if (isLocalImport(imp)) {
           if (transitiveUrlBase) {
             const resolved = resolveImportAsUrl(imp, transitiveUrlBase);
@@ -265,18 +331,30 @@ export async function resolveImports(
     }
   }
 
-  return newFiles;
+  return { loaded: newFiles, failed };
 }
 
 /**
- * Returns all class and enum names from a set of schemas, tagged with their
- * source schema file path. Used to populate ghost nodes and range autocomplete.
+ * Returns all classes, schema-level slots, enums, types and subsets from a
+ * set of schemas, tagged with their source schema file path. Used to populate
+ * ghost nodes, range autocomplete, and cross-schema validation.
  */
 export interface ImportedEntity {
   name: string;
-  type: 'class' | 'enum';
+  type: 'class' | 'slot' | 'enum' | 'type' | 'subset';
   sourceFilePath: string;
   schema: LinkMLSchema;
+}
+
+/**
+ * Whether an ImportedEntity corresponds to something that gets its own node
+ * on the canvas. Only classes and enums do — slots, types, and subsets are
+ * never rendered as graph nodes (a type is a scalar value, a slot/subset is
+ * metadata about other entities), so canvas/ghost-node consumers of
+ * ImportedEntity[] must filter on this before treating an entity as a node.
+ */
+export function isGraphNodeEntity(entity: ImportedEntity): entity is ImportedEntity & { type: 'class' | 'enum' } {
+  return entity.type === 'class' || entity.type === 'enum';
 }
 
 export function collectImportedEntities(
@@ -288,7 +366,7 @@ export function collectImportedEntities(
   // Determine which schemas are directly imported
   for (const imp of activeSchema.schema.imports) {
     if (isUrlImport(imp)) {
-      activeImports.add(imp); // URL schemas use URL as filePath
+      activeImports.add(normalizeUrlImport(imp));
     } else if (isLocalImport(imp)) {
       const resolved = resolveImportPath(imp, activeSchema.filePath, '');
       activeImports.add(resolved);
@@ -304,8 +382,17 @@ export function collectImportedEntities(
     for (const name of Object.keys(schema.schema.classes)) {
       entities.push({ name, type: 'class', sourceFilePath: schema.filePath, schema: schema.schema });
     }
+    for (const name of Object.keys(schema.schema.slots)) {
+      entities.push({ name, type: 'slot', sourceFilePath: schema.filePath, schema: schema.schema });
+    }
     for (const name of Object.keys(schema.schema.enums)) {
       entities.push({ name, type: 'enum', sourceFilePath: schema.filePath, schema: schema.schema });
+    }
+    for (const name of Object.keys(schema.schema.types)) {
+      entities.push({ name, type: 'type', sourceFilePath: schema.filePath, schema: schema.schema });
+    }
+    for (const name of Object.keys(schema.schema.subsets)) {
+      entities.push({ name, type: 'subset', sourceFilePath: schema.filePath, schema: schema.schema });
     }
   }
 
@@ -323,14 +410,18 @@ export function findMissingImport(
   allSchemas: SchemaFile[]
 ): string | null {
   // Already defined locally?
-  if (rangeName in activeSchema.schema.classes || rangeName in activeSchema.schema.enums) {
+  if (
+    rangeName in activeSchema.schema.classes ||
+    rangeName in activeSchema.schema.enums ||
+    rangeName in activeSchema.schema.types
+  ) {
     return null;
   }
 
   // Already imported?
   const currentImportPaths = new Set(
     activeSchema.schema.imports.flatMap((imp) => {
-      if (isUrlImport(imp)) return [imp];
+      if (isUrlImport(imp)) return [normalizeUrlImport(imp)];
       if (isLocalImport(imp)) return [resolveImportPath(imp, activeSchema.filePath, '')];
       return [];
     })
@@ -340,7 +431,11 @@ export function findMissingImport(
     if (schema.id === activeSchema.id) continue;
     if (currentImportPaths.has(schema.filePath)) continue;
 
-    if (rangeName in schema.schema.classes || rangeName in schema.schema.enums) {
+    if (
+      rangeName in schema.schema.classes ||
+      rangeName in schema.schema.enums ||
+      rangeName in schema.schema.types
+    ) {
       // URL-imported schemas: return the URL as-is (makeRelativeImport would mangle it)
       if (isUrlImport(schema.filePath)) return schema.filePath;
       // Return the relative import path (without .yaml)

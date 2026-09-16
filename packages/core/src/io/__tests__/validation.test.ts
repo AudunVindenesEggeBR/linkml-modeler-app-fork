@@ -34,6 +34,7 @@ import {
   emptySchema,
   emptyClassDefinition,
   emptyEnumDefinition,
+  emptySlotDefinition,
   type LinkMLSchema,
 } from '../../model/index.js';
 
@@ -454,6 +455,7 @@ describe('externalNames bypass', () => {
     const issues = validateSchemaFull(s, {
       classes: new Set(['ExternalBase']),
       enums: new Set(),
+      types: new Set(),
     });
     expect(issues.filter((i) => i.category === 'existence' && i.path.includes('Child.is_a'))).toHaveLength(0);
   });
@@ -466,8 +468,25 @@ describe('externalNames bypass', () => {
     const issues = validateSchemaFull(s, {
       classes: new Set(['ExternalMixin']),
       enums: new Set(),
+      types: new Set(),
     });
     expect(issues.filter((i) => i.category === 'existence' && i.path.includes('MyClass.mixins'))).toHaveLength(0);
+  });
+
+  it('range referencing an externally-imported type does not error', () => {
+    // Regression: a slot range resolving to a `types:`-only imported schema
+    // (e.g. brreg-felles-typer, which defines no classes/enums at all) must
+    // not be flagged as "range does not exist" once its type is known.
+    const s = baseSchema();
+    const cls = emptyClassDefinition('Person');
+    cls.attributes = { name: { ...emptySlotDefinition('name'), range: 'Tekst50' } };
+    s.classes['Person'] = cls;
+    const issues = validateSchemaFull(s, {
+      classes: new Set(),
+      enums: new Set(),
+      types: new Set(['Tekst50']),
+    });
+    expect(issues.filter((i) => i.category === 'existence' && i.path.includes('name'))).toHaveLength(0);
   });
 });
 

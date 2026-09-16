@@ -1,7 +1,7 @@
 // ProjectSwitcherDialog — lists all registered projects and allows switching.
 
 import React from 'react';
-import { useAppStore, openProjectFromDirectory, Button, Dialog } from '@linkml-editor/core';
+import { useAppStore, openProjectFromDirectory, summarizeFailedImports, Button, Dialog } from '@linkml-editor/core';
 import { usePlatform } from '@linkml-editor/core';
 import { WebProjectRegistry, type ProjectRegistryEntry } from '../platform/ProjectRegistry.js';
 
@@ -41,7 +41,7 @@ export function ProjectSwitcherDialog({ onClose }: ProjectSwitcherDialogProps) {
 
     setLoading(true);
     try {
-      const { project, hiddenSchemaIds, views, activeViewId, subsetLayouts } = await openProjectFromDirectory(entry.localPath, platform, entry.schemaPath);
+      const { project, hiddenSchemaIds, views, activeViewId, subsetLayouts, failedImports } = await openProjectFromDirectory(entry.localPath, platform, entry.schemaPath);
       if (project.schemas.length === 0) {
         pushToast({ message: `No LinkML schemas found in "${entry.repoName}"`, severity: 'warning' });
         setLoading(false);
@@ -60,6 +60,8 @@ export function ProjectSwitcherDialog({ onClose }: ProjectSwitcherDialogProps) {
       setViews(views);
       setSubsetLayouts(subsetLayouts);
       setActiveViewId(activeViewId);
+      const failedImportToast = summarizeFailedImports(failedImports);
+      if (failedImportToast) pushToast(failedImportToast);
       onClose();
     } catch (err) {
       pushToast({

@@ -65,11 +65,12 @@ function nextId() {
 export interface ExternalNames {
   classes: Set<string>;
   enums: Set<string>;
+  types: Set<string>;
 }
 
 export function validateSchemaFull(
   schema: LinkMLSchema,
-  externalNames: ExternalNames = { classes: new Set(), enums: new Set() }
+  externalNames: ExternalNames = { classes: new Set(), enums: new Set(), types: new Set() }
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
 
@@ -118,7 +119,8 @@ export function validateSchemaFull(
       allEnumNames.has(range) ||
       allTypeNames.has(range) ||
       externalNames.classes.has(range) ||
-      externalNames.enums.has(range)
+      externalNames.enums.has(range) ||
+      externalNames.types.has(range)
     );
   }
 

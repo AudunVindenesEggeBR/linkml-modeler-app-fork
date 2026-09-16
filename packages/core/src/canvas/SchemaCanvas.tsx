@@ -38,7 +38,7 @@ import { deriveGraph } from './deriveGraph.js';
 import { runAutoLayout, LAYERING_STRATEGY_UI_OPTIONS, EDGE_ROUTINGS, NODE_PLACEMENT_STRATEGIES, SPACING_PRESETS } from './autoLayout.js';
 import { useAppStore } from '../store/index.js';
 import { usePlatform } from '../platform/PlatformContext.js';
-import { collectReferencedImportedEntities } from '../io/importResolver.js';
+import { collectReferencedImportedEntities, isGraphNodeEntity } from '../io/importResolver.js';
 import { buildManifestData, writeEditorManifest } from '../io/editorManifest.js';
 import { selectEffectiveLayout } from './layoutUtils.js';
 import type { CanvasLayout, TextLabel } from '../model/index.js';
@@ -537,7 +537,7 @@ function SchemaCanvasInner() {
       prevImportedIdsRef.current = new Set();
       return;
     }
-    const currentIds = new Set(ghostEntities.map((e) => e.name));
+    const currentIds = new Set(ghostEntities.filter(isGraphNodeEntity).map((e) => e.name));
     const prevIds = prevImportedIdsRef.current;
     const hasNew = [...currentIds].some((id) => !prevIds.has(id));
     prevImportedIdsRef.current = currentIds;
@@ -995,7 +995,7 @@ function SchemaCanvasInner() {
           const sf = activeProject?.schemas.find((s) => s.id === activeSchemaId);
           if (sf) {
             const ghosts = collectReferencedImportedEntities(sf, activeProject!.schemas);
-            const kbGhostNames = new Set(ghosts.map((g) => g.name));
+            const kbGhostNames = new Set(ghosts.filter(isGraphNodeEntity).map((g) => g.name));
             const adj = buildAdjacency(sf.schema, kbGhostNames);
             const additive = e.shiftKey;
             e.preventDefault();
@@ -1031,7 +1031,7 @@ function SchemaCanvasInner() {
 
   // B3: schema adjacency and hop-distance dimming
   const ghostEntityNames = useMemo(
-    () => new Set(ghostEntities.map((e) => e.name)),
+    () => new Set(ghostEntities.filter(isGraphNodeEntity).map((e) => e.name)),
     [ghostEntities]
   );
   const schemaAdj = useMemo(() => {
@@ -1168,6 +1168,34 @@ function SchemaCanvasInner() {
         <div style={styles.emptyInner}>
           <p style={styles.emptyTitle}>No schema open</p>
           <p style={styles.emptyHint}>Open a project to see the canvas</p>
+        </div>
+      </div>
+    );
+  }
+
+  // A schema with no classes/enums (of its own, and none pulled in as ghost
+  // nodes from imports) has nothing for the canvas to draw — LinkML `types:`,
+  // `slots:`, and `subsets:` are never rendered as canvas nodes (jf.
+  // specs/backlog/cross-repo-import-resolution-gaps.md, runde 3: canvas is
+  // intentionally not a viewer for these, by the user's own choice — Outline
+  // and Table View are). Explain why, rather than showing a blank canvas
+  // that looks like a loading/import failure.
+  if (
+    storeNodes.length === 0 &&
+    Object.keys(activeSchemaFile.schema.classes).length === 0 &&
+    Object.keys(activeSchemaFile.schema.enums).length === 0 &&
+    (Object.keys(activeSchemaFile.schema.types).length > 0 ||
+      Object.keys(activeSchemaFile.schema.slots).length > 0 ||
+      Object.keys(activeSchemaFile.schema.subsets).length > 0)
+  ) {
+    return (
+      <div style={styles.emptyState}>
+        <div style={styles.emptyInner}>
+          <p style={styles.emptyTitle}>No classes or enums to display</p>
+          <p style={styles.emptyHint}>
+            This schema only defines types, schema-level slots, and/or subsets — the canvas only
+            visualizes classes and enums. Switch to Outline or Table view to browse this schema's content.
+          </p>
         </div>
       </div>
     );

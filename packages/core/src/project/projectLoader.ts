@@ -4,7 +4,7 @@ import type { PlatformAPI } from '../platform/PlatformContext.js';
 import type { Project, SchemaFile } from '../model/index.js';
 import { emptyCanvasLayout, emptySchema } from '../model/index.js';
 import { parseYaml } from '../io/yaml.js';
-import { resolveImports, normalizeSchemaUrl } from '../io/importResolver.js';
+import { resolveImports, normalizeSchemaUrl, type FailedImport } from '../io/importResolver.js';
 import { fetchTextWithRetry } from '../io/fetchErrors.js';
 import { readEditorManifest, applyManifestToSchemas, MANIFEST_FILENAME, type ViewDefinition, type ViewLayout } from '../io/editorManifest.js';
 
@@ -86,7 +86,7 @@ export async function openProjectFromDirectory(
   dirPath: string,
   platform: PlatformAPI,
   schemaPath: string = '.'
-): Promise<{ project: Project; hiddenSchemaIds: Set<string>; views: ViewDefinition[]; activeViewId: string | null; subsetLayouts: Record<string, ViewLayout> }> {
+): Promise<{ project: Project; hiddenSchemaIds: Set<string>; views: ViewDefinition[]; activeViewId: string | null; subsetLayouts: Record<string, ViewLayout>; failedImports: FailedImport[] }> {
   const startDir = joinPath(dirPath, schemaPath);
 
   // Collect all YAML files and manifest locations recursively, skipping .git / node_modules.
@@ -128,7 +128,7 @@ export async function openProjectFromDirectory(
   }
 
   // Resolve imports; rootPath=dirPath so loadSchemaFile builds dirPath+'/'+filePath.
-  const importedFiles = await resolveImports(schemaFiles, platform, dirPath);
+  const { loaded: importedFiles, failed: failedImports } = await resolveImports(schemaFiles, platform, dirPath);
   const allSchemas = [...schemaFiles, ...importedFiles];
 
   // Manifest is always at dirPath (the repo root), regardless of where schemas live.
@@ -148,7 +148,7 @@ export async function openProjectFromDirectory(
     updatedAt: new Date().toISOString(),
   };
 
-  return { project, hiddenSchemaIds, views, activeViewId, subsetLayouts };
+  return { project, hiddenSchemaIds, views, activeViewId, subsetLayouts, failedImports };
 }
 
 /**
@@ -190,7 +190,7 @@ export async function loadDemoSchemaFromUrl(url: string, name: string): Promise<
  * how network failures are worded — honestly, not diagnosed as CORS
  * specifically) on network failures, non-schema content, or YAML parse errors.
  */
-export async function openSchemaFromUrl(rawUrl: string, platform: PlatformAPI): Promise<Project> {
+export async function openSchemaFromUrl(rawUrl: string, platform: PlatformAPI): Promise<{ project: Project; failedImports: FailedImport[] }> {
   // github.com blob (web UI) pages don't send CORS headers, so a bare fetch
   // always fails there even though the exact same content is reachable at
   // raw.githubusercontent.com, which does. Users overwhelmingly paste the
@@ -229,10 +229,10 @@ export async function openSchemaFromUrl(rawUrl: string, platform: PlatformAPI): 
   };
 
   // Resolve URL-relative imports (sourceUrl on schemaFile guides the resolver)
-  const importedFiles = await resolveImports([schemaFile], platform, '');
+  const { loaded: importedFiles, failed: failedImports } = await resolveImports([schemaFile], platform, '');
   const allSchemas = [schemaFile, ...importedFiles];
 
-  return {
+  const project: Project = {
     id: crypto.randomUUID(),
     name: projectName,
     rootPath: '',
@@ -240,6 +240,8 @@ export async function openSchemaFromUrl(rawUrl: string, platform: PlatformAPI): 
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
+
+  return { project, failedImports };
 }
 
 /**

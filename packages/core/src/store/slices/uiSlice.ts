@@ -9,7 +9,12 @@ export interface Toast {
   message: string;
   severity: 'info' | 'success' | 'warning' | 'error';
   durationMs?: number;
+  /** ISO timestamp set by pushToast; used to order/display the notification history. */
+  createdAt: string;
 }
+
+/** Max entries kept in toastHistory (FIFO eviction of the oldest). Session-only, not persisted. */
+export const TOAST_HISTORY_CAP = 100;
 
 const HIDDEN_EDGE_TYPES_KEY = 'linkml-editor-hidden-edge-types';
 const HIGHLIGHT_SETTINGS_KEY = 'linkml-editor-highlight-settings';
@@ -106,6 +111,8 @@ export interface UISlice {
   propertiesPanelWidth: number; // px
   yamlPreviewWidth: number; // px
   toastQueue: Toast[];
+  /** Every toast ever pushed this session, newest last, capped at TOAST_HISTORY_CAP. Survives dismissToast (unlike toastQueue). */
+  toastHistory: Toast[];
   zoom: number; // canvas zoom level mirror for status bar
   syncStatus: SyncStatus; // null = not in cloud mode
   /** Schema IDs that are hidden in the project panel / canvas */
@@ -136,8 +143,9 @@ export interface UISlice {
   setProjectPanelWidth(width: number): void;
   setPropertiesPanelWidth(width: number): void;
   setYamlPreviewWidth(width: number): void;
-  pushToast(toast: Omit<Toast, 'id'>): void;
+  pushToast(toast: Omit<Toast, 'id' | 'createdAt'>): void;
   dismissToast(id: string): void;
+  clearToastHistory(): void;
   setZoom(zoom: number): void;
   setSyncStatus(status: SyncStatus): void;
   setSchemaVisible(schemaId: string, visible: boolean): void;
@@ -164,6 +172,7 @@ export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set) => ({
   propertiesPanelWidth: 320,
   yamlPreviewWidth: YAML_PREVIEW_MIN_WIDTH,
   toastQueue: [],
+  toastHistory: [],
   zoom: 1,
   syncStatus: null,
   hiddenSchemaIds: new Set(),
@@ -196,11 +205,22 @@ export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set) => ({
 
   pushToast(toast) {
     const id = `toast-${++toastCounter}`;
-    set((state) => ({ toastQueue: [...state.toastQueue, { ...toast, id }] }));
+    const full: Toast = { ...toast, id, createdAt: new Date().toISOString() };
+    set((state) => ({
+      toastQueue: [...state.toastQueue, full],
+      // History is append-only w.r.t. dismissToast — capped FIFO so it can't grow unbounded.
+      toastHistory: [...state.toastHistory, full].slice(-TOAST_HISTORY_CAP),
+    }));
   },
 
   dismissToast(id) {
+    // Only removes from the visible overlay queue — toastHistory keeps the entry
+    // so the user can find a dismissed notification again (jf. specs/backlog/cross-repo-import-resolution-gaps.md).
     set((state) => ({ toastQueue: state.toastQueue.filter((t) => t.id !== id) }));
+  },
+
+  clearToastHistory() {
+    set({ toastHistory: [] });
   },
 
   setZoom(zoom) {

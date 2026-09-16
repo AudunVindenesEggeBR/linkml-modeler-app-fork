@@ -21,7 +21,7 @@ export const createValidationSlice: StateCreator<ValidationSlice, [], [], Valida
   validationIssues: [],
   lastValidatedAt: null,
 
-  runValidation(schema, externalNames = { classes: new Set(), enums: new Set() }) {
+  runValidation(schema, externalNames = { classes: new Set(), enums: new Set(), types: new Set() }) {
     const issues = validateSchemaFull(schema, externalNames);
     set({ validationIssues: issues, lastValidatedAt: Date.now() });
   },

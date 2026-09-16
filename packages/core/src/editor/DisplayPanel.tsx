@@ -15,7 +15,7 @@
  */
 import React, { useMemo, useState } from 'react';
 import { useAppStore } from '../store/index.js';
-import { collectReferencedImportedEntities } from '../io/importResolver.js';
+import { collectReferencedImportedEntities, isGraphNodeEntity } from '../io/importResolver.js';
 import { usePlatform } from '../platform/PlatformContext.js';
 import { buildManifestData, writeEditorManifest } from '../io/editorManifest.js';
 import { Minus } from '../ui/icons/index.js';
@@ -113,7 +113,7 @@ export function DisplayPanel() {
   const ghostEntityNames = useMemo((): ReadonlySet<string> => {
     if (!activeSchemaFile || !activeProject) return new Set();
     const entities = collectReferencedImportedEntities(activeSchemaFile, activeProject.schemas);
-    return new Set(entities.map((e) => e.name));
+    return new Set(entities.filter(isGraphNodeEntity).map((e) => e.name));
   }, [activeSchemaFile, activeProject]);
 
   // Adjacency built from the active schema

@@ -12,7 +12,7 @@ import type { ClassNodeData, ResolvedSlot } from './ClassNode.js';
 import type { EnumNodeData } from './EnumNode.js';
 import type { LabelNodeData } from './LabelNode.js';
 import type { LinkMLEdgeType } from './edges.js';
-import type { ImportedEntity } from '../io/importResolver.js';
+import { isGraphNodeEntity, type ImportedEntity } from '../io/importResolver.js';
 import { type IncomingRangeHandle } from './nodeGeometry.js';
 
 // Default node dimensions used before layout runs.
@@ -463,6 +463,7 @@ export function deriveGraph(
   const allImportedIds = new Set<string>();
 
   for (const entity of importedEntities) {
+    if (!isGraphNodeEntity(entity)) continue; // slots/types/subsets never get their own canvas node
     if (existingIds.has(entity.name)) continue; // local definition takes priority
 
     existingIds.add(entity.name);

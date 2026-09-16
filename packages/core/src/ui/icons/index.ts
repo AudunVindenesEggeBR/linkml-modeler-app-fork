@@ -16,5 +16,6 @@ export {
   Plus,
   SlidersHorizontal,
   Sun,
+  Type,
   X,
 } from 'lucide-react';

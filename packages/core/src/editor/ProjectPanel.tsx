@@ -12,7 +12,7 @@ import { usePlatform } from '../platform/PlatformContext.js';
 import { buildManifestData, writeEditorManifest } from '../io/editorManifest.js';
 import type { ViewDefinition } from '../io/editorManifest.js';
 import { EntitySearchPanel } from './EntitySearchPanel.js';
-import { Diamond, Hexagon } from '../ui/icons/index.js';
+import { Diamond, Hexagon, Type as TypeIcon } from '../ui/icons/index.js';
 
 function basename(filePath: string): string {
   // Handle both / and \ separators, and strip trailing slashes
@@ -290,6 +290,7 @@ export function ProjectPanel() {
               const isHidden = hiddenSchemaIds.has(sf.id);
               const classCount = Object.keys(sf.schema.classes).length;
               const enumCount = Object.keys(sf.schema.enums).length;
+              const typeCount = Object.keys(sf.schema.types).length;
               const name = basename(sf.filePath);
 
               return (
@@ -327,6 +328,9 @@ export function ProjectPanel() {
                   <div style={styles.statsRow}>
                     <span style={{ ...styles.stat, display: 'inline-flex', alignItems: 'center', gap: 3 }} title={`${classCount} class(es)`}><Hexagon size={10} />{classCount}</span>
                     <span style={{ ...styles.stat, display: 'inline-flex', alignItems: 'center', gap: 3 }} title={`${enumCount} enum(s)`}><Diamond size={10} />{enumCount}</span>
+                    {typeCount > 0 && (
+                      <span style={{ ...styles.stat, display: 'inline-flex', alignItems: 'center', gap: 3 }} title={`${typeCount} type(s)`}><TypeIcon size={10} />{typeCount}</span>
+                    )}
                   </div>
                 </div>
               );
@@ -353,6 +357,7 @@ export function ProjectPanel() {
                     const isActive = sf.id === activeSchemaId;
                     const classCount = Object.keys(sf.schema.classes).length;
                     const enumCount = Object.keys(sf.schema.enums).length;
+                    const typeCount = Object.keys(sf.schema.types).length;
                     const displayName = sf.schema.name || basename(sf.filePath);
                     const source = shortSource(sf);
 
@@ -378,6 +383,9 @@ export function ProjectPanel() {
                         <div style={styles.statsRow}>
                           <span style={{ ...styles.stat, display: 'inline-flex', alignItems: 'center', gap: 3 }} title={`${classCount} class(es)`}><Hexagon size={10} />{classCount}</span>
                           <span style={{ ...styles.stat, display: 'inline-flex', alignItems: 'center', gap: 3 }} title={`${enumCount} enum(s)`}><Diamond size={10} />{enumCount}</span>
+                          {typeCount > 0 && (
+                            <span style={{ ...styles.stat, display: 'inline-flex', alignItems: 'center', gap: 3 }} title={`${typeCount} type(s)`}><TypeIcon size={10} />{typeCount}</span>
+                          )}
                         </div>
                       </div>
                     );

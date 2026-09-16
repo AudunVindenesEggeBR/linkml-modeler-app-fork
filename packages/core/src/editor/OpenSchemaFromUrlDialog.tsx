@@ -6,6 +6,7 @@ import React from 'react';
 import { usePlatform } from '../platform/PlatformContext.js';
 import { useAppStore } from '../store/index.js';
 import { openSchemaFromUrl } from '../project/projectLoader.js';
+import { summarizeFailedImports } from '../io/importResolver.js';
 import { Button } from '../ui/Button.js';
 import { Dialog } from '../ui/Dialog.js';
 
@@ -30,13 +31,15 @@ export function OpenSchemaFromUrlDialog({ onClose }: OpenSchemaFromUrlDialogProp
     setLoading(true);
     setError('');
     try {
-      const project = await openSchemaFromUrl(url.trim(), platform);
+      const { project, failedImports } = await openSchemaFromUrl(url.trim(), platform);
       setProject(project);
       pushToast({
         message: `Opened "${project.name}" — use Save to write to a local folder`,
         severity: 'success',
         durationMs: 4000,
       });
+      const failedImportToast = summarizeFailedImports(failedImports);
+      if (failedImportToast) pushToast(failedImportToast);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to open schema from URL');

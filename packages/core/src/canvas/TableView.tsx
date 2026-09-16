@@ -20,12 +20,12 @@ import {
 } from '@tanstack/react-table';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useAppStore } from '../store/index.js';
-import type { ClassDefinition, SlotDefinition, EnumDefinition } from '../model/index.js';
+import type { ClassDefinition, SlotDefinition, EnumDefinition, TypeDefinition } from '../model/index.js';
 import type { ViewMember } from '../io/editorManifest.js';
 
 // ── Row types ─────────────────────────────────────────────────────────────────
 
-type RowType = 'classes' | 'slots' | 'enums';
+type RowType = 'classes' | 'slots' | 'enums' | 'types';
 
 interface ClassRow {
   kind: 'class';
@@ -57,7 +57,16 @@ interface EnumRow {
   valueCount: number;
 }
 
-type TableRow = ClassRow | SlotRow | EnumRow;
+interface TypeRow {
+  kind: 'type';
+  schemaId: string;
+  name: string;
+  uri: string;
+  base: string;
+  description: string;
+}
+
+type TableRow = ClassRow | SlotRow | EnumRow | TypeRow;
 
 // ── Row derivation ────────────────────────────────────────────────────────────
 
@@ -66,6 +75,7 @@ function deriveRows(
   schemaId: string,
   classes: Record<string, ClassDefinition>,
   enums: Record<string, EnumDefinition>,
+  types: Record<string, TypeDefinition>,
   visibleNames: Set<string> | null
 ): TableRow[] {
   if (rowType === 'classes') {
@@ -106,15 +116,29 @@ function deriveRows(
     );
   }
 
-  // enums
-  return Object.values(enums)
-    .filter((e) => !visibleNames || visibleNames.has(e.name))
-    .map((e): EnumRow => ({
-      kind: 'enum',
+  if (rowType === 'enums') {
+    return Object.values(enums)
+      .filter((e) => !visibleNames || visibleNames.has(e.name))
+      .map((e): EnumRow => ({
+        kind: 'enum',
+        schemaId,
+        name: e.name,
+        description: e.description ?? '',
+        valueCount: Object.keys(e.permissibleValues).length,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  // types
+  return Object.values(types)
+    .filter((t) => !visibleNames || visibleNames.has(t.name))
+    .map((t): TypeRow => ({
+      kind: 'type',
       schemaId,
-      name: e.name,
-      description: e.description ?? '',
-      valueCount: Object.keys(e.permissibleValues).length,
+      name: t.name,
+      uri: t.uri ?? '',
+      base: t.base ?? '',
+      description: t.description ?? '',
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -180,6 +204,7 @@ function BoolCell({ value, onToggle }: { value: boolean; onToggle: () => void })
 const classColHelper = createColumnHelper<ClassRow>();
 const slotColHelper = createColumnHelper<SlotRow>();
 const enumColHelper = createColumnHelper<EnumRow>();
+const typeColHelper = createColumnHelper<TypeRow>();
 
 function buildClassColumns(
   updateClass: (schemaId: string, name: string, partial: Partial<ClassDefinition>) => void,
@@ -373,6 +398,36 @@ function buildEnumColumns(
   ];
 }
 
+/**
+ * Types have no PropertiesPanel/store-mutation support yet (jf.
+ * specs/backlog/cross-repo-import-resolution-gaps.md, runde 3) — read-only
+ * display columns, no updateType() mutation exists to wire inline editing to.
+ */
+function buildTypeColumns(): ColumnDef<TypeRow, string>[] {
+  return [
+    typeColHelper.accessor('name', {
+      header: 'Name',
+      size: 200,
+      cell: (info) => <div style={{ ...cellDisplayStyle, ...monoStyle }}>{info.getValue()}</div>,
+    }) as ColumnDef<TypeRow, string>,
+    typeColHelper.accessor('base', {
+      header: 'base',
+      size: 120,
+      cell: (info) => <div style={{ ...cellDisplayStyle, ...monoStyle, color: 'var(--color-fg-muted)' }}>{info.getValue() || '—'}</div>,
+    }) as ColumnDef<TypeRow, string>,
+    typeColHelper.accessor('uri', {
+      header: 'uri',
+      size: 160,
+      cell: (info) => <div style={{ ...cellDisplayStyle, ...monoStyle, color: 'var(--color-fg-muted)' }}>{info.getValue() || '—'}</div>,
+    }) as ColumnDef<TypeRow, string>,
+    typeColHelper.accessor('description', {
+      header: 'Description',
+      size: 400,
+      cell: (info) => <div style={cellDisplayStyle}>{info.getValue() || '—'}</div>,
+    }) as ColumnDef<TypeRow, string>,
+  ];
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 const ROW_HEIGHT = 34;
@@ -403,7 +458,7 @@ export function TableView() {
   const rows = useMemo((): TableRow[] => {
     if (!activeSchemaFile) return [];
     const { schema, id: schemaId } = activeSchemaFile;
-    return deriveRows(rowType, schemaId, schema.classes ?? {}, schema.enums ?? {}, visibleNames);
+    return deriveRows(rowType, schemaId, schema.classes ?? {}, schema.enums ?? {}, schema.types ?? {}, visibleNames);
   }, [activeSchemaFile, rowType, visibleNames]);
 
   const classColumns = useMemo(
@@ -415,12 +470,14 @@ export function TableView() {
     [updateAttribute, renameAttribute]
   );
   const enumColumns = useMemo(() => buildEnumColumns(updateEnum), [updateEnum]);
+  const typeColumns = useMemo(() => buildTypeColumns(), []);
 
   const columns = useMemo((): ColumnDef<TableRow, string>[] => {
     if (rowType === 'classes') return classColumns as ColumnDef<TableRow, string>[];
     if (rowType === 'slots') return slotColumns as ColumnDef<TableRow, string>[];
-    return enumColumns as ColumnDef<TableRow, string>[];
-  }, [rowType, classColumns, slotColumns, enumColumns]);
+    if (rowType === 'enums') return enumColumns as ColumnDef<TableRow, string>[];
+    return typeColumns as ColumnDef<TableRow, string>[];
+  }, [rowType, classColumns, slotColumns, enumColumns, typeColumns]);
 
   // TanStack Table's useReactTable() returns functions React Compiler can't
   // memoize safely, so it would skip auto-memoizing this component -- the
@@ -463,7 +520,7 @@ export function TableView() {
       {/* Toolbar: row type switcher + stats */}
       <div style={styles.toolbar}>
         <span style={styles.toolbarLabel}>Show:</span>
-        {(['classes', 'slots', 'enums'] as RowType[]).map((rt) => (
+        {(['classes', 'slots', 'enums', 'types'] as RowType[]).map((rt) => (
           <button
             key={rt}
             id={`lme-table-rowtype-${rt}`}

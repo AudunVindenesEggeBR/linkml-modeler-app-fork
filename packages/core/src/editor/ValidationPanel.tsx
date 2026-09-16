@@ -198,6 +198,7 @@ export function ValidationPanel() {
     const externalNames = {
       classes: new Set(imported.filter((e) => e.type === 'class').map((e) => e.name)),
       enums: new Set(imported.filter((e) => e.type === 'enum').map((e) => e.name)),
+      types: new Set(imported.filter((e) => e.type === 'type').map((e) => e.name)),
     };
     runValidation(activeSchema.schema, externalNames);
   }, [activeSchema, activeProject, runValidation]);

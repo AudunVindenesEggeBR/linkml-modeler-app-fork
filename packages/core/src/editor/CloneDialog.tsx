@@ -8,6 +8,7 @@ import React from 'react';
 import { usePlatform } from '../platform/PlatformContext.js';
 import { useAppStore } from '../store/index.js';
 import { openProjectFromDirectory } from '../project/projectLoader.js';
+import { summarizeFailedImports } from '../io/importResolver.js';
 import { Button } from '../ui/Button.js';
 import { Dialog } from '../ui/Dialog.js';
 
@@ -78,7 +79,7 @@ export function CloneDialog({ onClose }: CloneDialogProps) {
     setProgress('Scanning for LinkML schemas...');
 
     try {
-      const { project, hiddenSchemaIds, views, activeViewId, subsetLayouts } = await openProjectFromDirectory(result.destPath, platform);
+      const { project, hiddenSchemaIds, views, activeViewId, subsetLayouts, failedImports } = await openProjectFromDirectory(result.destPath, platform);
       if (project.schemas.length === 0) {
         pushToast({ message: 'Repository cloned but no LinkML schemas found', severity: 'warning' });
       }
@@ -90,6 +91,8 @@ export function CloneDialog({ onClose }: CloneDialogProps) {
       setActiveViewId(activeViewId);
       setGitAvailable(true);
       pushToast({ message: `Cloned ${repoName} successfully`, severity: 'success', durationMs: 3000 });
+      const failedImportToast = summarizeFailedImports(failedImports);
+      if (failedImportToast) pushToast(failedImportToast);
       onClose();
     } catch (err) {
       setState('error');

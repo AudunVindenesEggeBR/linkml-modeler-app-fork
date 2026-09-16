@@ -47,12 +47,20 @@ interface EnumValueRow {
   parentEnum: string;
 }
 
+interface TypeRow {
+  kind: 'type';
+  name: string;
+  base?: string;
+  uri?: string;
+  description?: string;
+}
+
 interface SectionRow {
   kind: 'section';
   label: string;
 }
 
-type OutlineRow = ClassRow | SlotRow | EnumRow | EnumValueRow | SectionRow;
+type OutlineRow = ClassRow | SlotRow | EnumRow | EnumValueRow | TypeRow | SectionRow;
 
 // ── Slot collection (mirrors deriveGraph gatherAncestorSlots) ────────────────
 
@@ -127,6 +135,7 @@ function deriveOutlineRows(
   const rows: OutlineRow[] = [];
   const classes = schema.classes ?? {};
   const enums = schema.enums ?? {};
+  const types = schema.types ?? {};
 
   // ── Classes section ─────────────────────────────────────────────────────────
   const visibleClasses = visibleNames
@@ -246,6 +255,22 @@ function deriveOutlineRows(
           rows.push({ kind: 'enumValue', name: pv, depth: 1, parentEnum: name });
         }
       }
+    }
+  }
+
+  // ── Types section ────────────────────────────────────────────────────────────
+  // Flat, non-expandable list — a LinkML type is a scalar value, not a
+  // hierarchical entity like a class, so there's nothing to nest under it.
+  const visibleTypes = visibleNames
+    ? Object.keys(types).filter((n) => visibleNames.has(n))
+    : Object.keys(types);
+  const sortedTypes = [...visibleTypes].sort();
+
+  if (sortedTypes.length > 0) {
+    rows.push({ kind: 'section', label: 'Types' });
+    for (const name of sortedTypes) {
+      const def = types[name];
+      rows.push({ kind: 'type', name, base: def.base, uri: def.uri, description: def.description });
     }
   }
 
@@ -453,11 +478,13 @@ export function OutlineView() {
     return deriveOutlineRows(schema, viewMemberNames, expanded);
   }, [schema, viewMemberNames, expanded]);
 
-  // Flat list of selectable (non-section) row IDs for keyboard navigation
+  // Flat list of selectable (non-section) row IDs for keyboard navigation.
+  // Types are display-only (no ActiveEntity/PropertiesPanel support exists for
+  // them), so they're excluded here rather than given a fake navigable id.
   const navigableIds = useMemo(
     () =>
       rows
-        .filter((r): r is ClassRow | SlotRow | EnumRow | EnumValueRow => r.kind !== 'section')
+        .filter((r): r is ClassRow | SlotRow | EnumRow | EnumValueRow => r.kind !== 'section' && r.kind !== 'type')
         .map((r) => {
           if (r.kind === 'class') return r.name;
           if (r.kind === 'enum') return `enum:${r.name}`;
@@ -584,6 +611,7 @@ export function OutlineView() {
           const sectionId =
             row.label === 'Classes' ? 'lme-outline-classes-header' :
             row.label === 'Enums' ? 'lme-outline-enums-header' :
+            row.label === 'Types' ? 'lme-outline-types-header' :
             undefined;
           return (
             <div key={`section-${i}`} id={sectionId} style={styles.sectionHeader}>
@@ -687,6 +715,24 @@ export function OutlineView() {
             >
               <span style={rowStyles.slotDot}>·</span>
               <span style={{ ...rowStyles.label, fontSize: 11 }}>{row.name}</span>
+            </div>
+          );
+        }
+
+        if (row.kind === 'type') {
+          // Display-only row: types are scalar values with no PropertiesPanel
+          // support yet, so there's nothing to select/focus/expand here.
+          return (
+            <div
+              key={`type-${row.name}`}
+              style={{ ...rowStyles.row, paddingLeft: 8, color: 'var(--color-fg-secondary)' }}
+              title={row.description}
+            >
+              <span style={{ display: 'inline-block', width: 10 }} />
+              <span style={{ ...rowStyles.label, fontSize: 12 }}>{row.name}</span>
+              {(row.base || row.uri) && (
+                <span style={{ ...rowStyles.badge, color: 'var(--color-fg-muted)' }}>{row.base ?? row.uri}</span>
+              )}
             </div>
           );
         }

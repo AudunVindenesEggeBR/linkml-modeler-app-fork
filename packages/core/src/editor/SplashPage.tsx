@@ -6,6 +6,7 @@ import { useAppStore } from '../store/index.js';
 import { usePlatform } from '../platform/PlatformContext.js';
 import { getRecentProjects, removeRecentProject } from '../project/recentProjects.js';
 import { openProjectFromDirectory, createNewProject } from '../project/projectLoader.js';
+import { summarizeFailedImports } from '../io/importResolver.js';
 import type { RecentProject } from '../model/index.js';
 import { BookOpen, FilePlus, Folder, FolderOpen, GitBranch, Link2, Monitor, Moon, PlayCircle, Sun, X } from '../ui/icons/index.js';
 import { Button } from '../ui/Button.js';
@@ -57,7 +58,7 @@ export function SplashPage({ demoUrl, onLoadDemo }: { demoUrl?: string; onLoadDe
 
     setIsLoading(true);
     try {
-      const { project, hiddenSchemaIds, views, activeViewId, subsetLayouts } = await openProjectFromDirectory(dirPath, platform);
+      const { project, hiddenSchemaIds, views, activeViewId, subsetLayouts, failedImports } = await openProjectFromDirectory(dirPath, platform);
       if (project.schemas.length === 0) {
         pushToast({ message: 'No LinkML schemas found in this directory', severity: 'warning' });
         setIsLoading(false);
@@ -70,6 +71,8 @@ export function SplashPage({ demoUrl, onLoadDemo }: { demoUrl?: string; onLoadDe
       setActiveViewId(activeViewId);
       const hasGit = await platform.initGit(dirPath);
       setGitAvailable(hasGit);
+      const failedImportToast = summarizeFailedImports(failedImports);
+      if (failedImportToast) pushToast(failedImportToast);
     } catch (err) {
       pushToast({
         message: `Failed to open project: ${err instanceof Error ? err.message : String(err)}`,
@@ -96,7 +99,7 @@ export function SplashPage({ demoUrl, onLoadDemo }: { demoUrl?: string; onLoadDe
   const handleOpenRecent = async (recent: RecentProject) => {
     setIsLoading(true);
     try {
-      const { project, hiddenSchemaIds, views, activeViewId, subsetLayouts } = await openProjectFromDirectory(recent.rootPath, platform);
+      const { project, hiddenSchemaIds, views, activeViewId, subsetLayouts, failedImports } = await openProjectFromDirectory(recent.rootPath, platform);
       if (project.schemas.length === 0) {
         pushToast({ message: 'No LinkML schemas found — the directory may have changed', severity: 'warning' });
         setIsLoading(false);
@@ -110,6 +113,8 @@ export function SplashPage({ demoUrl, onLoadDemo }: { demoUrl?: string; onLoadDe
       setActiveViewId(activeViewId);
       const hasGit = await platform.initGit(recent.rootPath);
       setGitAvailable(hasGit);
+      const failedImportToast = summarizeFailedImports(failedImports);
+      if (failedImportToast) pushToast(failedImportToast);
     } catch (err) {
       pushToast({
         message: `Failed to open project: ${err instanceof Error ? err.message : String(err)}`,
