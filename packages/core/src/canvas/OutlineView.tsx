@@ -747,7 +747,13 @@ export function OutlineView() {
 
 const styles: Record<string, React.CSSProperties> = {
   container: {
-    flex: 1,
+    // `flex: 1` was a no-op here — the parent (#lme-canvas-area in main.tsx)
+    // isn't display:flex, so this container never got a bounded height and
+    // just grew to fit all content, silently clipped by the parent's own
+    // overflow:hidden with no scrollbar (jf. specs/backlog/cross-repo-import-resolution-gaps.md,
+    // runde 4). height:'100%' matches the same working pattern already used
+    // by SchemaCanvas's canvasWrapper and TableView's root in this same slot.
+    height: '100%',
     overflowY: 'auto',
     overflowX: 'hidden',
     background: 'var(--color-bg-canvas)',

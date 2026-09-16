@@ -1,7 +1,7 @@
 # Spec: To ulike importfeil funne på Enhetsregisteret-skjemaet — absolutte URL-imports utan filending vert stille droppa, og importerte `types:` vert usynlege
 
-Status: **Implementert og verifisert i alle tre rundar.** Runde 1+2 (A1, A2, B1, B2, B3, toast-historikk) og runde 3 (C1: Outline+Table "Types"-visning, C2b: canvas-avgrensing dokumentert i UI, C3: ProjectPanel types-badge) er alle implementerte, godkjende av brukaren via AskUserQuestion, og verifiserte — inkludert visuell verifisering i nettlesar med Playwright-skjermbilete (sjå "Implementering (2026-09-16, runde 3)" nedst).
-Dato: 2026-09-16 (runde 2: 2026-09-16, implementert runde 1+2: 2026-09-16, runde 3: 2026-09-16, implementert runde 3: 2026-09-16)
+Status: **Runde 1-4 implementert og verifisert.** Runde 4: Outline View sin "Types"-seksjon klipte innhald VERTIKALT (ikkje horisontalt, som først anteke og feilaktig skrive opp — retta etter at brukaren presiserte). E1 (den verifiserte eittlinjes-fiksen) implementert etter "utfør" og re-verifisert live. E2 (badge-breidde-avgrensing, separat/mindre robustheitsfunn) står framleis ope — "utfør" var eit blankt svar utan å namngje E2 spesifikt, så han er IKKJE teken med per denne fila sin eigen presedens om at ei godkjenning berre dekker det ho namngjev.
+Dato: 2026-09-16 (runde 2: 2026-09-16, implementert runde 1+2: 2026-09-16, runde 3: 2026-09-16, implementert runde 3: 2026-09-16, runde 4: 2026-09-16, implementert E1: 2026-09-16)
 
 Bakgrunn (ordrett frå brukaren): "Enhetsregisteret skjemaet har både absolutte og relative imports. Det ser ut som om den relative importen til brreg-felles-typer blir lest og lagt i IMPORTS lista, men innholdet i det aktuelle skjemaet har ikkje blitt lest inn. Den absolutte importen til https://raw.githubusercontent.com/brreg/linkml-datamodellering-no/dcat-ap-no-v2.14.1/src/linkml/ap-no/dcat-ap-no/dcat-ap-no-schema har ikkje blitt lest inn i det heile."
 
@@ -279,3 +279,78 @@ Per CLAUDE.md sitt krav om å faktisk prøve UI-endringar i nettlesar: `pnpm dev
 - `scripts/check-token-usage.sh`: PASS.
 - Målretta `vitest run --environment node` på alle testfiler nær koden som vart endra (`uiSlice.test.ts`, `importResolver.test.ts`, `validation.test.ts`, `ghostNodes.test.ts`, `autoLayout.test.ts`): 182/182 grøne, 2 todo.
 - **Ikkje gjort**: ingen nye automatiserte (unit- eller E2E-)testar for sjølve Outline/Table/ProjectPanel/Canvas-rendering-endringane — desse komponenta hadde ingen eksisterande unit-testdekning for rad-avleiingslogikken sin frå før (`deriveOutlineRows`/`deriveRows` er ikkje eksporterte), og å endre modul-overflata berre for å teste var vurdert som utanfor omfanget av dette funnet. Playwright-skjermbileta over er difor det einaste beviset — vurder å leggje til E2E-dekning for Outline/Table sine "types"-visingar som eiga oppfølging dersom dette området held fram å endre seg.
+
+## Runde 4 (2026-09-16): Outline View sin "Types"-seksjon vert klippa VERTIKALT for brreg-felles-typer
+
+Ønske (ordrett, første melding): "eg ser at brreg-felles-typer i outline visninga går utanfor skjermen. Kan vi bruke ein horisontal scrollbar for å kunne vise alle"
+
+Presisering (ordrett, etter oppfølgingsspørsmål): "min skjerm har 1920x1200 oppløsning og på 100% zoom kuttes Types lista etter PositiveInteger, resten vises ikkje. Når eg zoomer til 66% så blir skrifta liten nok til at heile lista vises. Vi snakker alså om behov for vertikal scrolling."
+
+**Den første analysen i denne runda (under, no retta) var feil** — undersøkte horisontal overflow (badge-breidde) fordi brukaren sjølv gjetta "horisontal scrollbar" som løysing i det første spørsmålet. Presiseringa over viser at det faktisk er VERTIKAL klipping (lista kuttar midt i, ikkje breidde-avkorting av enkeltrader) — retta etter at brukaren gav konkret oppløysing + zoom-åtferd, som peika eintydig mot ei anna årsak. Den opphavlege horisontal-hypotesen (badge utan `maxWidth`, sjå tidlegare versjon av denne seksjonen i git-historia) er ikkje stadfesta som relevant for DETTE symptomet, men står som eit separat, mindre robustheitsfunn dersom det dukkar opp seinare.
+
+### Stadfesta i koden OG empirisk verifisert med fiks — verkeleg rotårsak: manglande høgd-avgrensing
+
+Outline View sin rot-container (`packages/core/src/canvas/OutlineView.tsx:749`) er montert direkte som barn av `#lme-canvas-area` i `packages/web/src/main.tsx:573`. Denne foreldre-diven (`canvasArea`-stilen, `main.tsx` linje ~721-726) er:
+```ts
+canvasArea: {
+  flex: 1,
+  overflow: 'hidden',
+  position: 'relative',
+  minHeight: 0,
+},
+```
+**Merk: `canvasArea` er IKKJE `display: 'flex'`.** Outline View sin eigen container brukar likevel `flex: 1` for å prøve å fylle høgda:
+```ts
+container: {
+  flex: 1,           // ← NO-OP, sidan foreldrenoden ikkje er ein flex-container
+  overflowY: 'auto',
+  overflowX: 'hidden',
+  ...
+}
+```
+`flex: 1` har berre effekt når FORELDRA er `display: 'flex'` — det er `canvasArea` ikkje. Resultatet: Outline View sin container får ALDRI ei eigentleg avgrensa høgd, og fell tilbake på `height: auto`, som veks til å romme alt innhaldet (1360px for 54 rader i `brreg-felles-typer`, stadfesta empirisk under). Sidan containeren sin EIGEN `overflowY: 'auto'` berre triggar når INNHALDET overflowar HANS EIGEN boks — og boksen hans i praksis er "uendeleg" (veks med innhaldet) — vert det ALDRI nokon indre scrollbar. I staden er det `canvasArea` (foreldra) sin `overflow: 'hidden'` som til slutt klipper det som stikk ut, usynleg og utan scrollbar — nøyaktig det brukaren skildrar.
+
+Samanlikna med dei to søskenvisingane i same `canvasArea`-slot:
+- `SchemaCanvas.tsx` sin rot (`canvasWrapper`-stilen): `position: 'relative', width: '100%', height: '100%'` — bruker `height: '100%'`, IKKJE `flex`, sidan `canvasWrapper` sin forelder ikkje er ein flex-container. Fungerer korrekt.
+- `TableView.tsx` sin rot (`root`-stilen): `display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden'` — same mønster, fungerer korrekt.
+- `OutlineView.tsx` er den EINASTE av dei tre som brukar `flex: 1` i staden for `height: '100%'` på rotnoden sin — ein reell, isolert avvik frå eit mønster som alt fungerer to andre stader i same fil-struktur.
+
+**Empirisk stadfesta ved å faktisk implementere og teste fiksen** (per CLAUDE.md sitt "verifiser empirisk, ikkje berre ved kodelesing"-prinsipp): henta den ekte `brreg-felles-typer-schema.yaml` frå `main`, opna via Playwright ved brukaren sin EKSAKTE oppgjevne oppløysing (1920×1200):
+
+| | `flex: 1` (noverande kode) | `height: '100%'` (foreslått fiks) |
+|---|---|---|
+| Outline sin `scrollHeight` | 1360px | 1360px (uendra — alt innhald) |
+| Outline sin `clientHeight` (synleg boks) | **1360px** (feil — ikkje avgrensa) | **1060px** (korrekt — matchar `canvasArea` sin reelle høgd) |
+| `canvasArea` sin `clientHeight` | 1060px | 1060px |
+| Resultat | Innhald under ~1060px vert usynleg klipt av `canvasArea`, ingen scrollbar | Ekte 300px overflow, `overflowY: auto` gjev no ein FUNGERANDE vertikal scrollbar |
+
+Skjermbilete stadfesta: med fiksen synleg heile vegen forbi "PositiveInteger" (brukaren sitt eksakte kutt-punkt) i den scrolla lista. Fiksen vart sett inn mellombels, verifisert live, og REVERTERT att i påvente av godkjenning (jf. spec-first-arbeidsflyten i dette dokumentet).
+
+### Forslag til forbetring
+
+**E1 (tilrådd — verifisert løysing).** Endre `flex: 1` til `height: '100%'` på Outline View sin container-stil (`OutlineView.tsx:750`), i tråd med det identiske, alt-fungerande mønsteret i `SchemaCanvas.tsx`/`TableView.tsx`. Eitt linjeskift, ingen åtferdsendring for andre visingar, verifisert å løyse akkurat det brukaren rapporterte ved deira eksakte oppløysing.
+
+**E2 (ikkje tilrådd som del av denne saka, men verdt å nemne).** Den opphavlege (feilaktige) horisontal-hypotesen sitt funn — typerada sin badge manglar `maxWidth`/ellipsis-avkorting samanlikna med slot-range-badgen — er STOSTT gyldig som ei uavhengig, mindre robustheitssvakheit (ein type utan `base:`-felt kunne i teorien enno gje ei brei badge), men er IKKJE årsaka til DETTE rapporterte problemet. Kan takast som eiga, separat, lita oppfølging seinare dersom ønskt.
+
+### Testcase / akseptansekriterium (runde 4)
+
+15. Outline View viser heile innhaldet (alle rader i alle seksjonar) via ein FUNGERANDE vertikal scrollbar når innhaldet er høgare enn tilgjengeleg plass — stadfesta ved 1920×1200/100% zoom med `brreg-felles-typer-schema.yaml` (54 rader).
+16. Ingen regresjon for Canvas- eller Table-visinga (som alt brukar det korrekte `height: '100%'`-mønsteret) eller for Outline View med færre rader enn tilgjengeleg høgd (ingen unødvendig scrollbar).
+17. `pnpm --filter @linkml-editor/core test` og `tsc --noEmit` framleis grøne.
+
+## Implementering (2026-09-16, E1)
+
+Brukaren svarte "utfør" på spørsmålet om E1. `container.flex: 1` → `container.height: '100%'` i `OutlineView.tsx:750`, med ein kommentar som forklarer kvifor (same mønster som `SchemaCanvas`/`TableView` alt brukar i same slot). Re-verifisert live etter implementering (ikkje berre stole på den tidlegare mellombelse testen): frisk `pnpm dev`-restart (jf. Vite/WSL2-funnet under), same `brreg-felles-typer-schema.yaml` ved 1920×1200, stadfesta med `scrollHeight: 1360 > clientHeight: 1060` og eit skjermbilete scrolla heilt til botnen som viser siste rada ("Virksomhetsstatus").
+
+**Verifisert:**
+- `tsc --noEmit` på `@linkml-editor/core`: ingen feil.
+- `eslint` på den endra fila: ingen feil.
+- `scripts/check-token-usage.sh`: PASS.
+- Målretta `vitest run --environment node` på tilstøytande canvas-testar (`autoLayout.test.ts`, `ghostNodes.test.ts`): 56/56 grøne (ingen eksisterande unit-testar dekker `OutlineView.tsx` sjølv — reint CSS/layout-fiks, ingen eksportert logikk å teste).
+- Live nettlesarverifisering med Playwright ved brukaren sin eksakte oppgjevne oppløysing (1920×1200), som vist over.
+
+**E2 (badge-breidde-avgrensing) er IKKJE implementert** — "utfør" svarte berre på det fyrste, eintydig namngjevne spørsmålet (E1); det andre spørsmålet (E2, eit sjølvstendig val) fekk ikkje eit eksplisitt svar, og vert difor ikkje teken med per denne fila sin eigen presedens frå tidlegare rundar ("ei godkjenning dekker berre det ho namngjev"). Står open til brukaren evt. ber om det spesifikt.
+
+### Eit uventa funn undervegs — verdt ei eiga merknad i CLAUDE.md
+
+Medan fiksen vart verifisert, synte det seg at Vite sin dev-server (`pnpm dev`) IKKJE plukka opp ei kjeldefil-endring i `packages/core/src/canvas/OutlineView.tsx` sjølv om filas alias korrekt peikar til kjeldekoden (`packages/web/vite.config.ts` sin `@linkml-editor/core` → `../core/src/index.ts`-alias) og dev-serveren hadde køyrt kontinuerleg frå før endringa vart gjort. Fiksen synte ingen effekt i nettlesaren (stadfesta ved å lese `outerHTML`/inline-style direkte) før dev-serveren vart HELT DREPT OG STARTA PÅ NYTT — først då las han den oppdaterte fila frå disk. Dette matchar det same WSL2 `/mnt/c`-filsystem-mønsteret som alt er dokumentert for vitest-flakigheit i `node-pnpm-fallback`-skillen, no stadfesta å gjelde Vite sin fil-overvaking (chokidar/inotify) òg, ikkje berre vitest sin worker-pool. **Lagt til i CLAUDE.md** (seksjonen "Errors and Unexpected Outcomes") i same runde, sidan det kosta reell tid å diagnostisere ("fiksen verkar ikkje" vart mellombels mistolka som feil hypotese, før eit server-restart avslørte at det var ein stale-fil-cache, ikkje ein feil hypotese).
