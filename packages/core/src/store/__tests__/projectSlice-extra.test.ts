@@ -121,6 +121,89 @@ describe('ProjectSlice — schema-level slot mutations', () => {
   });
 });
 
+// ── Schema-level type mutations ───────────────────────────────────────────────
+
+describe('ProjectSlice — schema-level type mutations', () => {
+  it('addSchemaType — adds a type to schema.types', () => {
+    const store = createStore();
+    const sf = makeSchemaFile('core');
+    store.getState().setProject(makeProject('test', [sf]));
+    store.getState().addSchemaType(sf.id, { name: 'Tekst50', base: 'str' });
+
+    expect(getSchema(store).types?.['Tekst50']).toEqual({ name: 'Tekst50', base: 'str' });
+  });
+
+  it('updateSchemaType — updates type field', () => {
+    const store = createStore();
+    const sf = makeSchemaFile('core');
+    store.getState().setProject(makeProject('test', [sf]));
+    store.getState().addSchemaType(sf.id, { name: 'Tekst50' });
+    store.getState().updateSchemaType(sf.id, 'Tekst50', { base: 'str', uri: 'xsd:string' });
+
+    const type = getSchema(store).types?.['Tekst50'];
+    expect(type?.base).toBe('str');
+    expect(type?.uri).toBe('xsd:string');
+  });
+
+  it('updateSchemaType — no-ops if type does not exist', () => {
+    const store = createStore();
+    const sf = makeSchemaFile('core');
+    store.getState().setProject(makeProject('test', [sf]));
+    store.getState().updateSchemaType(sf.id, 'nonexistent', { base: 'str' });
+
+    expect(getSchema(store).types).toEqual({});
+  });
+
+  it('deleteSchemaType — removes the type', () => {
+    const store = createStore();
+    const sf = makeSchemaFile('core');
+    store.getState().setProject(makeProject('test', [sf]));
+    store.getState().addSchemaType(sf.id, { name: 'Tekst50' });
+    store.getState().deleteSchemaType(sf.id, 'Tekst50');
+
+    expect(getSchema(store).types).not.toHaveProperty('Tekst50');
+  });
+
+  it('renameSchemaType — renames type and cascades typeof references on other types', () => {
+    const store = createStore();
+    const sf = makeSchemaFile('core');
+    store.getState().setProject(makeProject('test', [sf]));
+    store.getState().addSchemaType(sf.id, { name: 'Tekst50', base: 'str' });
+    store.getState().addSchemaType(sf.id, { name: 'Epostadresse', typeof: 'Tekst50' });
+
+    store.getState().renameSchemaType(sf.id, 'Tekst50', 'ShortText');
+
+    const schema = getSchema(store);
+    expect(schema.types).toHaveProperty('ShortText');
+    expect(schema.types).not.toHaveProperty('Tekst50');
+    expect(schema.types?.['Epostadresse']?.typeof).toBe('ShortText');
+  });
+
+  it('renameSchemaType — no-ops if target name already exists', () => {
+    const store = createStore();
+    const sf = makeSchemaFile('core');
+    store.getState().setProject(makeProject('test', [sf]));
+    store.getState().addSchemaType(sf.id, { name: 'Tekst50' });
+    store.getState().addSchemaType(sf.id, { name: 'ShortText' });
+
+    store.getState().renameSchemaType(sf.id, 'Tekst50', 'ShortText');
+
+    const schema = getSchema(store);
+    expect(schema.types).toHaveProperty('Tekst50');
+    expect(schema.types).toHaveProperty('ShortText');
+  });
+
+  it('renameSchemaType — no-ops if old type does not exist', () => {
+    const store = createStore();
+    const sf = makeSchemaFile('core');
+    store.getState().setProject(makeProject('test', [sf]));
+
+    store.getState().renameSchemaType(sf.id, 'ghost', 'real');
+
+    expect(getSchema(store).types).toEqual({});
+  });
+});
+
 // ── Slot reference mutations ──────────────────────────────────────────────────
 
 describe('ProjectSlice — slot reference mutations', () => {

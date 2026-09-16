@@ -457,6 +457,9 @@ export function OutlineView() {
   const selectedNodeIds = useAppStore((s) => s.selectedNodeIds);
   const setSelection = useAppStore((s) => s.setSelection);
   const setActiveEntity = useAppStore((s) => s.setActiveEntity);
+  const clearActiveEntity = useAppStore((s) => s.clearActiveEntity);
+  const setPropertiesPanelOpen = useAppStore((s) => s.setPropertiesPanelOpen);
+  const setScrollToSchemaTypeName = useAppStore((s) => s.setScrollToSchemaTypeName);
 
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [focusedId, setFocusedId] = useState<string | null>(null);
@@ -479,8 +482,10 @@ export function OutlineView() {
   }, [schema, viewMemberNames, expanded]);
 
   // Flat list of selectable (non-section) row IDs for keyboard navigation.
-  // Types are display-only (no ActiveEntity/PropertiesPanel support exists for
-  // them), so they're excluded here rather than given a fake navigable id.
+  // Types are clickable (see selectType below — they open SchemaMetaPanel's
+  // "Schema Types" section) but have no ActiveEntity variant or canvas
+  // selection, so they don't fit the shared class/enum/slot navigation model
+  // this list drives and are excluded here rather than given a fake id.
   const navigableIds = useMemo(
     () =>
       rows
@@ -519,6 +524,18 @@ export function OutlineView() {
       setFocusedId(`enum:${name}`);
     },
     [setSelection, setActiveEntity]
+  );
+
+  // Types have no canvas node/ActiveEntity — navigate to SchemaMetaPanel's
+  // "Schema Types" section instead (shown when activeEntity is null), and
+  // ask it to expand + scroll to this specific type.
+  const selectType = useCallback(
+    (name: string) => {
+      clearActiveEntity();
+      setPropertiesPanelOpen(true);
+      setScrollToSchemaTypeName(name);
+    },
+    [clearActiveEntity, setPropertiesPanelOpen, setScrollToSchemaTypeName]
   );
 
   // Keyboard navigation
@@ -720,13 +737,17 @@ export function OutlineView() {
         }
 
         if (row.kind === 'type') {
-          // Display-only row: types are scalar values with no PropertiesPanel
-          // support yet, so there's nothing to select/focus/expand here.
+          // Clicking opens SchemaMetaPanel's "Schema Types" section, scrolled
+          // to this type — see selectType. No canvas node/ActiveEntity, so no
+          // expand/collapse triangle and no keyboard-nav id (see navigableIds).
           return (
             <div
               key={`type-${row.name}`}
-              style={{ ...rowStyles.row, paddingLeft: 8, color: 'var(--color-fg-secondary)' }}
+              role="button"
+              tabIndex={-1}
+              style={{ ...rowStyles.row, paddingLeft: 8, color: 'var(--color-fg-secondary)', cursor: 'pointer' }}
               title={row.description}
+              onClick={() => selectType(row.name)}
             >
               <span style={{ display: 'inline-block', width: 10 }} />
               <span style={{ ...rowStyles.label, fontSize: 12 }}>{row.name}</span>

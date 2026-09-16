@@ -1,5 +1,5 @@
 import type { StateCreator } from 'zustand';
-import type { Project, SchemaFile, LinkMLSchema, ClassDefinition, SlotDefinition, EnumDefinition, PermissibleValue, CanvasLayout, GitConfig, TextLabel, SubsetDefinition } from '../../model/index.js';
+import type { Project, SchemaFile, LinkMLSchema, ClassDefinition, SlotDefinition, EnumDefinition, PermissibleValue, CanvasLayout, GitConfig, TextLabel, SubsetDefinition, TypeDefinition } from '../../model/index.js';
 import { findMissingImport, resolveImportPath } from '../../io/importResolver.js';
 import { addRecentProject } from '../../project/recentProjects.js';
 
@@ -34,6 +34,13 @@ export interface ProjectSlice {
   /** Delete a schema-level slot and auto-remove all class slot[] references and slotUsage entries. */
   deleteSchemaSlot(schemaId: string, slotName: string): void;
   renameSchemaSlot(schemaId: string, oldName: string, newName: string): void;
+
+  // ── Schema-level type mutations ───────────────────────────────────────────────
+  addSchemaType(schemaId: string, type: TypeDefinition): void;
+  updateSchemaType(schemaId: string, typeName: string, partial: Partial<TypeDefinition>): void;
+  deleteSchemaType(schemaId: string, typeName: string): void;
+  /** Rename a schema-level type; cascades `typeof` references on other types in the same schema. Slot/attribute `range` references are left as-is (same precedent as renameClass/renameEnum — validation flags dangling ones). */
+  renameSchemaType(schemaId: string, oldName: string, newName: string): void;
 
   // ── Class mixin mutations (cls.mixins[] array) ───────────────────────────────
   addMixinToClass(schemaId: string, className: string, mixinName: string): void;
@@ -384,6 +391,70 @@ export const createProjectSlice: StateCreator<ProjectSlice, [], [], ProjectSlice
             updatedClasses[name] = updated;
           }
           return { ...s, slots: { ...restSlots, [newName]: renamedSlot }, classes: updatedClasses };
+        }),
+      };
+    });
+  },
+
+  // ── Schema-level type mutations ──────────────────────────────────────────────
+
+  addSchemaType(schemaId, type) {
+    set((state) => {
+      if (!state.activeProject) return state;
+      return {
+        activeProject: patchSchema(state.activeProject, schemaId, (s) => ({
+          ...s,
+          types: { ...(s.types ?? {}), [type.name]: type },
+        })),
+      };
+    });
+  },
+
+  updateSchemaType(schemaId, typeName, partial) {
+    set((state) => {
+      if (!state.activeProject) return state;
+      return {
+        activeProject: patchSchema(state.activeProject, schemaId, (s) => {
+          const existing = s.types?.[typeName];
+          if (!existing) return s;
+          return {
+            ...s,
+            types: { ...s.types, [typeName]: { ...existing, ...partial } },
+          };
+        }),
+      };
+    });
+  },
+
+  deleteSchemaType(schemaId, typeName) {
+    set((state) => {
+      if (!state.activeProject) return state;
+      return {
+        activeProject: patchSchema(state.activeProject, schemaId, (s) => {
+          const { [typeName]: _removed, ...restTypes } = s.types ?? {};
+          return { ...s, types: restTypes };
+        }),
+      };
+    });
+  },
+
+  renameSchemaType(schemaId, oldName, newName) {
+    set((state) => {
+      if (!state.activeProject) return state;
+      return {
+        activeProject: patchSchema(state.activeProject, schemaId, (s) => {
+          const existing = s.types?.[oldName];
+          if (!existing || (s.types ?? {})[newName]) return s;
+          const { [oldName]: _removed, ...restTypes } = s.types ?? {};
+          const renamedType = { ...existing, name: newName };
+          // Cascade: update typeof references on other types (analogous to isA for classes)
+          const updatedTypes: typeof s.types = { ...restTypes, [newName]: renamedType };
+          for (const [name, t] of Object.entries(updatedTypes)) {
+            if (t.typeof === oldName) {
+              updatedTypes[name] = { ...t, typeof: newName };
+            }
+          }
+          return { ...s, types: updatedTypes };
         }),
       };
     });

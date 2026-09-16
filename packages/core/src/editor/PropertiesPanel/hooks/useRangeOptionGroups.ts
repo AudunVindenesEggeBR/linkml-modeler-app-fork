@@ -16,7 +16,8 @@ export function useRangeOptionGroups(_schemaId: string, excludeClassName?: strin
       const label = sf.filePath.replace(/\.ya?ml$/, '');
       const classNames = Object.keys(sf.schema.classes).filter((n) => n !== excludeClassName).sort();
       const enumNames = Object.keys(sf.schema.enums).sort();
-      const options = [...classNames, ...enumNames];
+      const typeNames = Object.keys(sf.schema.types ?? {}).sort();
+      const options = [...classNames, ...enumNames, ...typeNames];
       if (options.length > 0) {
         groups.push({ label, options });
       }

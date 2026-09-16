@@ -11,8 +11,10 @@ import { X } from '../../ui/icons/index.js';
 import { EmptyPanel } from './EmptyPanel.js';
 import { SectionHeader } from './internal.js';
 import { SchemaSlotInlineEditor } from './SchemaSlotInlineEditor.js';
+import { SchemaTypeInlineEditor } from './SchemaTypeInlineEditor.js';
 import { styles } from './styles.js';
 import { useRangeOptionGroups } from './hooks/useRangeOptionGroups.js';
+import { useTypeOptionGroups } from './hooks/useTypeOptionGroups.js';
 
 export function SchemaMetaPanel({ schemaId }: { schemaId: string }) {
   const activeSchemaFile = useAppStore((s) => s.getActiveSchema());
@@ -27,13 +29,21 @@ export function SchemaMetaPanel({ schemaId }: { schemaId: string }) {
   const updateSchemaSlot = useAppStore((s) => s.updateSchemaSlot);
   const deleteSchemaSlot = useAppStore((s) => s.deleteSchemaSlot);
   const renameSchemaSlot = useAppStore((s) => s.renameSchemaSlot);
+  const addSchemaType = useAppStore((s) => s.addSchemaType);
+  const updateSchemaType = useAppStore((s) => s.updateSchemaType);
+  const deleteSchemaType = useAppStore((s) => s.deleteSchemaType);
+  const renameSchemaType = useAppStore((s) => s.renameSchemaType);
+  const scrollToSchemaTypeName = useAppStore((s) => s.scrollToSchemaTypeName);
+  const setScrollToSchemaTypeName = useAppStore((s) => s.setScrollToSchemaTypeName);
 
   const [newImport, setNewImport] = React.useState('');
   const [resolving, setResolving] = React.useState(false);
   const [newSchemaSlotName, setNewSchemaSlotName] = React.useState('');
+  const [newSchemaTypeName, setNewSchemaTypeName] = React.useState('');
   const [newPrefixKey, setNewPrefixKey] = React.useState('');
   const [newPrefixUri, setNewPrefixUri] = React.useState('');
   const rangeOptionGroups = useRangeOptionGroups(schemaId);
+  const typeOptionGroups = useTypeOptionGroups();
 
   if (!schema) return <EmptyPanel message="No schema loaded" />;
 
@@ -307,6 +317,52 @@ export function SchemaMetaPanel({ schemaId }: { schemaId: string }) {
             if (name && !(schema.slots ?? {})[name]) {
               addSchemaSlot(schemaId, { name });
               setNewSchemaSlotName('');
+            }
+          }}
+        >
+          + Add
+        </button>
+      </div>
+
+      <SectionHeader title="Schema Types" />
+
+      {Object.values(schema.types ?? {}).map((type) => (
+        <SchemaTypeInlineEditor
+          key={type.name}
+          type={type}
+          schemaTypes={schema.types ?? {}}
+          typeOptionGroups={typeOptionGroups}
+          scrollTarget={scrollToSchemaTypeName === type.name}
+          onScrolled={() => setScrollToSchemaTypeName(null)}
+          onUpdate={(partial) => updateSchemaType(schemaId, type.name, partial)}
+          onDelete={() => deleteSchemaType(schemaId, type.name)}
+          onRename={(newName) => renameSchemaType(schemaId, type.name, newName)}
+        />
+      ))}
+
+      <div style={styles.addRow}>
+        <input
+          style={{ ...inputStyle, flex: 1 }}
+          placeholder="new type name…"
+          value={newSchemaTypeName}
+          onChange={(e) => setNewSchemaTypeName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              const name = newSchemaTypeName.trim();
+              if (name && !(schema.types ?? {})[name]) {
+                addSchemaType(schemaId, { name });
+                setNewSchemaTypeName('');
+              }
+            }
+          }}
+        />
+        <button
+          style={styles.btnPrimary}
+          onClick={() => {
+            const name = newSchemaTypeName.trim();
+            if (name && !(schema.types ?? {})[name]) {
+              addSchemaType(schemaId, { name });
+              setNewSchemaTypeName('');
             }
           }}
         >
