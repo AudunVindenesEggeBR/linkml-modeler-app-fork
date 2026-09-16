@@ -104,6 +104,8 @@ podman-compose -f deploy/web/docker-compose.yml up --build -d
 
 If a rebuild doesn't seem to change anything, check this before suspecting a caching or code issue: compare the container's image ID against `<service>:latest`'s image ID as above — a mismatch means the stale container is still serving requests.
 
+**Don't add `--no-cache` to `build` for routine redeploys.** `Dockerfile.web` is deliberately layered (dependency manifests copied and `pnpm install` run before the rest of the source is copied in) so that an ordinary `build` reuses the cached `pnpm install`/`tsc`/`vite build` layers whenever only application source changed, not dependencies — `--no-cache` throws all of that away and re-runs every layer unconditionally, which is real wall-clock time on every deploy for no benefit in the common case. It has legitimate uses if you specifically suspect a stale/corrupted cache layer, but the "nothing changed in the browser" symptom above is almost always the stale-*container* issue (fixed by `down` + `up --build`), not a stale build *cache* — reach for `--no-cache` only after ruling that out.
+
 ### Serving behind a reverse proxy at a subpath
 
 When your reverse proxy routes the app under a URL prefix (e.g. `https://your-domain.com/linkml-editor/`), three values must agree: the Vite asset base, the nginx location prefix, and the CORS proxy URL the app is built with. All three are passed straight through to the container build as environment variables — set them before `up --build`, nothing needs building on the host first:
