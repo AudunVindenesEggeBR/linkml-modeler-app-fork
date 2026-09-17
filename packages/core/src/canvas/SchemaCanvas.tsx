@@ -1205,7 +1205,7 @@ function SchemaCanvasInner() {
           <p style={styles.emptyTitle}>No classes or enums to display</p>
           <p style={styles.emptyHint}>
             This schema only defines types, schema-level slots, and/or subsets — the canvas only
-            visualizes classes and enums. Switch to Outline or Table view to browse this schema's content.
+            visualizes classes and enums. Switch to Outline or Table view to browse this schema&apos;s content.
           </p>
         </div>
       </div>
