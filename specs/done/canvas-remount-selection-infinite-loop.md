@@ -169,3 +169,44 @@ Brukaren skreiv "utfør alternativ 1" — eksplisitt godkjenning, etter at Runde
 2. Automatisert (bør leggjast til, t.d. Playwright E2E i `packages/web`): reproduser same sekvens og stadfest ingen konsolfeil / ingen "Unexpected Error"-boundary trigga. **Ikkje gjort enno** — berre manuell/engongs Playwright-verifikasjon i denne runda, ikkje ein varig test i suiten. Vurder som eiga oppfølging.
 3. `pnpm --filter @linkml-editor/core test` framleis grøn (ingen regresjon i eksisterande canvas-/selection-testar). ✅ 336/336, sjå over.
 4. `pnpm --filter @linkml-editor/core exec tsc -p tsconfig.json --noEmit` rein. ✅ Stadfesta.
+
+## Retrospektiv (2026-09-17): kostnad, og kva som er flytta til CLAUDE.md
+
+Brukaren spurte etter at denne økta var ferdig: økta tok lang tid og brukte mange tokens — er det lærdomar verdt å skrive ned for å jobbe meir effektivt i framtida? Dette er den gjennomgangen, i same stil som `specs/done/session-retrospective-2026-09-08.md`.
+
+**Kostnadstal for dei tre agent-forkane brukte til undersøking/verifikasjon i denne saka:**
+
+| Runde | Oppgåve | Tokens | Tool calls | Tid |
+|---|---|---|---|---|
+| 1 | Fyrste rotårsak-undersøking | 197 862 | 97 | ~19,2 min |
+| 2 | Alternativ 2-verifikasjon (forkasta) | 231 465 | 72 | ~13,1 min |
+| 3 | Alternativ 1-verifikasjon (stadfesta) | 172 239 | 30 | ~4,4 min |
+| **Sum** | | **~601 566** | **199** | **~36,7 min** |
+
+To konkrete funn, no skrivne inn i `CLAUDE.md`:
+
+1. **Alle tre forkane bygde ein CORS-fixture-server + Playwright-drivarskript + manuell `pnpm dev`-livssyklus FRÅ NYTT, heilt utanom repoet sitt EIGE, allereie eksisterande E2E-oppsett.** `packages/web/playwright.config.ts` startar alt `pnpm dev` sjølv (`webServer`-konfig), og appen eksponerer eit ferdig `window.__lme_e2e__`-testhjelpe-API (`loadSchema`, `setSelection`, `setActiveEntity`, m.fl. — brukt i EKSISTERANDE spec-filer som `focus-mode.spec.ts`) som lastar eit skjema RETT INN i appen utan URL-fetch, altså utan CORS-problem i det heile. Ingen av forkane sjekka `packages/web/e2e/` før dei bygde sin eigen løysing. Dette var den klart største kostnadskilden i heile økta (dei tre forkane sin samla kostnad over) og er no skriven inn i CLAUDE.md ("Errors and Unexpected Outcomes") som ei eksplisitt sjekk å gjøre FØRE ein byggjer noko frå nytt.
+2. **Runde 2 (Alternativ 2) var eit unødvendig implementer-verifiser-reverter-steg** — den fyrste undersøkinga (Runde 1) hadde ALLEREIE empirisk stadfesta at eit no-op-patch av `onSelectionChange` fiksar krasjet. Alternativ 2 bygde i staden på ein NY teori (mount-tidspunkt) som viste seg feil, medan Alternativ 1 (som vart valt til slutt) er strukturelt nettopp den alt-provde no-op-mekanismen, berre gjort permanent inntil eit reelt brukartrykk. Hadde denne koplinga vore gjort tidlegare, kunne Runde 2 sin heile kostnad (231k tokens, 72 tool calls, ~13 min) vore spart. No skrive inn i CLAUDE.md som eit generelt prinsipp: føretrekk ein fiks som byggjer på ein ALLEREIE PROVEN undertrykkingsmekanisme framfor ein ny, "meir elegant" teori.
+
+### Tilleggsevaluering (2026-09-17, seinare samme dag): var det å gje opp `chromium-cli` for tidleg ei riktig avgjerd?
+
+Brukaren spurte spesifikt om antakinga "`chromium-cli` er ikkje tilgjengelig her" var korrekt, og om `chromium-cli` (eller eit forsøk på å installere det) kunne forenkla/forkorta testinga i Runde 1-3.
+
+**Konklusjon: antakinga var korrekt, og no stadfesta grundigare enn i sjølve økta (der berre `which chromium-cli` vart køyrt éin gong).** Nye kontrollar denne runden, spesifikt for å teste om det fanst en installasjonsveg som burde vore prøvd:
+- `which`/`type chromium-cli`: ikkje funne.
+- `npm view chromium-cli`: **404 — finst ikkje på npm-registeret i det heile**, altså ikkje noko `npm install -g chromium-cli` kunne ha løyst.
+- `find /` etter `*chromium-cli*` i vanlege installasjonsstiar, og spesifikt i `/tmp/claude-1000/bundled-skills/`-treet (der `run`-skillet sjølv ligg materialisert): ingen treff.
+- `npx --no-install playwright --version`: ikkje funne — det finst heller ingen GLOBAL `playwright`-CLI installert i dette miljøet, berre repoet sin eigen lokale `@playwright/test`-workspace-dependency.
+
+Dette stadfestar at `chromium-cli` ikkje er ein npm-pakke eller eit lokalt installerbart verktøy i det heile i dette (native WSL2, ikkje-cloud) miljøet — det er ein miljø-spesifikk ressurs (sannsynlegvis kun til stades i visse sandkasse-/cloud-typer Claude Code-økter), ikkje noko ein agent kan skaffe seg via `npm`/`pip`/`apt` på eigen hand. Å bruke tid på eit installasjonsforsøk ville vore bortkasta — `run`-skillet sin eigen dokumenterte fallback ("If chromium-cli isn't available: adapt electron.md's REPL driver...") var rett veg, og den vart teken direkte, utan å bruke tid på fånyttes installasjonsforsøk.
+
+**Men ville `chromium-cli`, OM det hadde vore tilgjengelig, forenkla/forkorta testinga?** Delvis, men mindre enn ein kanskje trur — og IKKJE på den dominerande kostnadsdrivaren frå hovud-retrospektivet over:
+- **Reell, men marginal vinst**: `chromium-cli` sin REPL-modell (pipe enkle tekstkommandoar som `nav`/`click`/`screenshot`/`console --errors` direkte til stdin) ville spart sjølve **skriving-av-Node/TS-skript**-steget — ingen import av `@playwright/test`, altså heller ikkje det alt-dokumenterte scratchpad-ESM-resolusjonsproblemet (`CLAUDE.md`, "A one-off Node/Playwright verification script..."), og ingen plikt til å plassere drivaren inni `packages/web/` for modulløysing. Innebygd `console --errors` ville også spart å skrive `page.on('console')`/`page.on('pageerror')`-oppsett manuelt.
+- **INGEN vinst på hovudkostnaden**: Den faktiske største kostnadsdrivaren (funn #1 over) var at ingen av forkane brukte det EKSISTERANDE `packages/web/e2e/`-oppsettet (`playwright.config.ts` sin auto-styrte `webServer`, og `window.__lme_e2e__.loadSchema(...)` som lastar skjema utan URL-fetch). Dette er UAVHENGIG av om drivaren er `chromium-cli` eller eit Playwright-skript — begge ville framleis trengt ein CORS-fixture-server OM dei (feilaktig, som skjedde) navigerte "Open from URL"-UI-flyten i staden for å kalle `__lme_e2e__.loadSchema` direkte. Sjølv OM `chromium-cli` hadde ein `eval`-type kommando som kunne kalla `window.__lme_e2e__.loadSchema(...)` direkte (ikkje stadfesta at han har det, sidan verktøyet ikkje er tilgjengelig her for å teste), måtte ein framleis VITE om og VELJE å bruke `__lme_e2e__` i staden for URL-fetch-UI-flyten — det er den reelle innsikta, ikkje kva REPL/skript-verktøy som fører kommandoane.
+- **Éin ulempe med `chromium-cli` for DETTE repoet spesifikt**: ein REPL-sesjon er per natur eingongs/utforskande og etterlèt ingen commit-bar artefakt. Ein `.spec.ts`-fil i `packages/web/e2e/` (den løysinga hovud-retrospektivet tilrår) blir derimot VARIG regresjonsdekning — nøyaktig det "Testcase"-punkt 2 i denne specen alt peika på som eit ope hól. For denne typen "verifiser ein bugfiks i canvas"-oppgåve er ein committable E2E-spec-fil difor det rette verktøyet uansett, ikkje berre ein snarveg for manuell utforsking — sjølv om `chromium-cli` hadde vore tilgjengelig, ville anbefalinga vore å SKRIVE fiksen som ein `.spec.ts` og køyre han via `pnpm test:e2e`, ikkje å drive han interaktivt via ein REPL.
+
+**Handling:** ingen ny CLAUDE.md-regel lagt til for dette — det var ingen feil å rette (antakinga var korrekt frå fyrste forsøk, teken raskt, utan bortkasta installasjonsforsøk). Dette avsnittet er ei stadfesta, dokumentert evaluering for ettertida, ikkje ein prosessendring.
+
+**Vurdert, men ikkje gjennomført:**
+- **Ein permanent Playwright E2E-test for denne konkrete regresjonen** (`packages/web/e2e/`, t.d. last `kitchen_sink.yaml` via `__lme_e2e__.loadSchema`, vel ein klasse, byt visning, byt tilbake, stadfest ingen konsollfeil) — peika på som ei tydeleg oppfølging i "Testcase"-punkt 2 over, men IKKJE skrive denne runden (retrospektivet handlar om PROSESS-lærdom, ikkje om å implementere ny testdekning utan eksplisitt førespurnad). Bør tas som eiga, lita oppgåve.
+- **Ein eigen "browser-verifiser dette repoet"-skill** (jf. `run`-skillet sitt eige forslag om `/run-skill-generator` når fallback-mønsteret krev ein hand-skriven drivar) — vurdert, men IKKJE generert denne runden. No delvis overflødig sidan CLAUDE.md-lærdomen ovanfor allereie peikar direkte til `packages/web/e2e/` sitt eksisterande oppsett, som er den permanente, reelle "skillen" her; ein eigen wrapper-skill kan vurderast seinare om E2E-oppsettet held på å bli glømt likevel.
