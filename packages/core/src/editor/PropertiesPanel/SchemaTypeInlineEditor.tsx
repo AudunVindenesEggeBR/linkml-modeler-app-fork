@@ -46,7 +46,9 @@ export function SchemaTypeInlineEditor({
       <button type="button" style={styles.slotEditorHeader} onClick={() => setExpanded((v) => !v)}>
         <span style={styles.slotEditorToggle}>{expanded ? '▾' : '▸'}</span>
         <span style={styles.slotEditorName}>{type.name}</span>
-        {type.typeof && <span style={styles.slotEditorRange}>: {type.typeof}</span>}
+        {(type.typeof ?? type.base) && (
+          <span style={styles.slotEditorRange}>: {type.typeof ?? type.base}</span>
+        )}
       </button>
 
       {expanded && (

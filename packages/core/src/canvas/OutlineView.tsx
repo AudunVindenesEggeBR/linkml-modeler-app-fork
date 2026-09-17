@@ -50,6 +50,7 @@ interface EnumValueRow {
 interface TypeRow {
   kind: 'type';
   name: string;
+  typeof?: string;
   base?: string;
   uri?: string;
   description?: string;
@@ -270,7 +271,7 @@ function deriveOutlineRows(
     rows.push({ kind: 'section', label: 'Types' });
     for (const name of sortedTypes) {
       const def = types[name];
-      rows.push({ kind: 'type', name, base: def.base, uri: def.uri, description: def.description });
+      rows.push({ kind: 'type', name, typeof: def.typeof, base: def.base, uri: def.uri, description: def.description });
     }
   }
 
@@ -751,8 +752,10 @@ export function OutlineView() {
             >
               <span style={{ display: 'inline-block', width: 10 }} />
               <span style={{ ...rowStyles.label, fontSize: 12 }}>{row.name}</span>
-              {(row.base || row.uri) && (
-                <span style={{ ...rowStyles.badge, color: 'var(--color-fg-muted)' }}>{row.base ?? row.uri}</span>
+              {(row.typeof ?? row.base ?? row.uri) && (
+                <span style={{ ...rowStyles.badge, color: 'var(--color-fg-muted)' }}>
+                  {row.typeof ?? row.base ?? row.uri}
+                </span>
               )}
             </div>
           );
