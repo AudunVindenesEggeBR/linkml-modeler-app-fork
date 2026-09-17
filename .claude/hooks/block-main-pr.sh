@@ -17,6 +17,14 @@ fi
 
 branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
 
+# The dev-first policy this hook enforces is moot if no `dev` branch exists at all
+# (e.g. a personal fork that only ever uses `main`) -- there is nowhere else to PR
+# into. Check both the local ref and origin's, since origin may not have been
+# fetched into a local branch yet.
+if ! git show-ref --verify --quiet refs/heads/dev && ! git show-ref --verify --quiet refs/remotes/origin/dev; then
+  exit 0
+fi
+
 case "$branch" in
   dev)
     exit 0 ;;
