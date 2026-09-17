@@ -1,5 +1,4 @@
-import { useCallback } from 'react';
-import { useAppStore } from '../../store/index.js';
+import { useAppStore, useTemporalStore } from '../../store/index.js';
 import { Minus } from '../../ui/icons/index.js';
 import { EmptyPanel } from './EmptyPanel.js';
 import { ClassPanel } from './ClassPanel.js';
@@ -20,12 +19,10 @@ export function PropertiesPanel() {
 
   const schemaId = activeSchemaFile?.id ?? '';
 
-  const undo = useCallback(() => {
-    (useAppStore as unknown as { temporal: { getState: () => { undo: () => void } } }).temporal.getState().undo();
-  }, []);
-  const redo = useCallback(() => {
-    (useAppStore as unknown as { temporal: { getState: () => { redo: () => void } } }).temporal.getState().redo();
-  }, []);
+  const canUndo = useTemporalStore((s) => s.pastStates.length > 0);
+  const canRedo = useTemporalStore((s) => s.futureStates.length > 0);
+  const undo = useTemporalStore((s) => s.undo);
+  const redo = useTemporalStore((s) => s.redo);
 
   if (!propertiesPanelOpen) {
     return (
@@ -65,10 +62,20 @@ export function PropertiesPanel() {
       <div style={styles.panelHeader}>
         <span style={styles.panelTitle}>Properties</span>
         <div style={styles.panelHeaderActions}>
-          <button style={styles.headerBtn} onClick={undo} title="Undo (Ctrl+Z)">
+          <button
+            style={{ ...styles.headerBtn, opacity: canUndo ? 1 : 0.4, cursor: canUndo ? 'pointer' : 'default' }}
+            onClick={() => undo()}
+            disabled={!canUndo}
+            title="Undo (Ctrl+Z)"
+          >
             ↩
           </button>
-          <button style={styles.headerBtn} onClick={redo} title="Redo (Ctrl+Shift+Z)">
+          <button
+            style={{ ...styles.headerBtn, opacity: canRedo ? 1 : 0.4, cursor: canRedo ? 'pointer' : 'default' }}
+            onClick={() => redo()}
+            disabled={!canRedo}
+            title="Redo (Ctrl+Shift+Z)"
+          >
             ↪
           </button>
           <button style={styles.headerBtn} onClick={() => setPropertiesPanelOpen(false)} title="Minimize panel">
