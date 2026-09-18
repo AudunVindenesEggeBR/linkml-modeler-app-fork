@@ -11,6 +11,14 @@ export type ActiveEntity =
 export interface EditorSlice {
   // State
   activeEntity: ActiveEntity;
+  /**
+   * Set when the user navigates to a schema-level type from outside the
+   * Properties Panel (e.g. clicking a type row in Outline View). SchemaMetaPanel
+   * reads this to expand + scroll the matching SchemaTypeInlineEditor into view,
+   * then clears it — types have no ActiveEntity variant since SchemaMetaPanel
+   * (shown when activeEntity is null) already renders all of them inline.
+   */
+  scrollToSchemaTypeName: string | null;
   propertiesPanelOpen: boolean;
   displayPanelOpen: boolean;
   projectPanelOpen: boolean;
@@ -28,6 +36,7 @@ export interface EditorSlice {
   // Actions
   setActiveEntity(entity: ActiveEntity): void;
   clearActiveEntity(): void;
+  setScrollToSchemaTypeName(name: string | null): void;
   setPropertiesPanelOpen(open: boolean): void;
   setDisplayPanelOpen(open: boolean): void;
   setProjectPanelOpen(open: boolean): void;
@@ -45,6 +54,7 @@ export interface EditorSlice {
 
 export const createEditorSlice: StateCreator<EditorSlice, [], [], EditorSlice> = (set) => ({
   activeEntity: null,
+  scrollToSchemaTypeName: null,
   propertiesPanelOpen: true,
   displayPanelOpen: true,
   projectPanelOpen: true,
@@ -65,6 +75,10 @@ export const createEditorSlice: StateCreator<EditorSlice, [], [], EditorSlice> =
 
   clearActiveEntity() {
     set({ activeEntity: null });
+  },
+
+  setScrollToSchemaTypeName(name) {
+    set({ scrollToSchemaTypeName: name });
   },
 
   setPropertiesPanelOpen(open) {

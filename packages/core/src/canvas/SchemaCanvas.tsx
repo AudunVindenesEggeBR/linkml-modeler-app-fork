@@ -785,9 +785,20 @@ function SchemaCanvasInner() {
     [setActiveEntity]
   );
 
+  // Suppresses onSelectionChange write-backs until a real pointer gesture has occurred on this
+  // mount. On a fresh mount (e.g. switching back from Outline/Table view), ReactFlow's internal
+  // selection state starts fresh while persisted selectedNodeIds may already be non-empty;
+  // ReactFlow then perpetually "corrects" the mismatch and echoes each correction back via
+  // onSelectionChange, and writing that straight into selectedNodeIds re-triggers the next
+  // correction — an infinite update loop (React error #185). A genuine click/drag lets ReactFlow
+  // set its own internal state first, so the echo always agrees and this guard is a no-op for
+  // normal interaction. Resets to false on every fresh mount, matching the mismatch's lifetime.
+  const hasUserInteractedRef = useRef(false);
+
   // Rubber-band / multi-selection → update store selectedNodeIds
   const onSelectionChange = useCallback(
     ({ nodes, edges: selEdges }: OnSelectionChangeParams) => {
+      if (!hasUserInteractedRef.current) return;
       setSelection(
         nodes.map((n) => n.id),
         selEdges.map((e) => e.id)
@@ -1194,7 +1205,7 @@ function SchemaCanvasInner() {
           <p style={styles.emptyTitle}>No classes or enums to display</p>
           <p style={styles.emptyHint}>
             This schema only defines types, schema-level slots, and/or subsets — the canvas only
-            visualizes classes and enums. Switch to Outline or Table view to browse this schema's content.
+            visualizes classes and enums. Switch to Outline or Table view to browse this schema&apos;s content.
           </p>
         </div>
       </div>
@@ -1202,7 +1213,14 @@ function SchemaCanvasInner() {
   }
 
   return (
-    <div id="lme-canvas-wrapper" style={styles.canvasWrapper} onClick={() => contextMenu && setContextMenu(null)}>
+    <div
+      id="lme-canvas-wrapper"
+      style={styles.canvasWrapper}
+      onClick={() => contextMenu && setContextMenu(null)}
+      onPointerDownCapture={() => {
+        hasUserInteractedRef.current = true;
+      }}
+    >
       <EdgeMarkerDefs />
       <ReactFlow
         nodes={displayNodes}

@@ -49,6 +49,16 @@ services:
       # Restrict to your app's domain in production, e.g.:
       # ALLOW_ORIGIN=https://your-domain.com
       - ALLOW_ORIGIN=*
+    # server.js runs `node` directly as PID 1 and never registers a SIGTERM
+    # handler. Under the Compose Spec's `init: true`, an init process (tini/
+    # catatonit) runs as PID 1 instead and forwards signals correctly — without
+    # it, an unhandled SIGTERM sent to PID 1 is silently dropped by the kernel,
+    # so every stop/`--force-recreate` sits out the full stop-timeout (10s)
+    # before falling back to SIGKILL. Confirmed via the
+    # `WARN[0010] StopSignal SIGTERM failed to stop container web_proxy_1`
+    # line in an actual build/deploy log; see
+    # specs/backlog/podman-compose-web-build-time.md.
+    init: true
     restart: unless-stopped
     # The proxy is intentionally not exposed on a host port — nginx reverse
     # proxies /cors-proxy/ to it so it's reachable on the same origin.

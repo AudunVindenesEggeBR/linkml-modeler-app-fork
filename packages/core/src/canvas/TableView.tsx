@@ -507,6 +507,18 @@ export function TableView() {
   const virtualItems = virtualizer.getVirtualItems();
   const totalSize = virtualizer.getTotalSize();
 
+  // Shared column-width source for both the header row and every virtualized
+  // body row. Native <table> layout can't be used here: virtualizing rows
+  // requires position:absolute, and per the CSS Display spec, a "table-row"
+  // element with position:absolute is "blockified" to display:block, which
+  // silently disconnects it from the browser's table column-tracking
+  // algorithm — header and body then size their cells independently and
+  // drift out of alignment (jf. specs/backlog/table-view-column-alignment-broken.md).
+  // Deriving one gridTemplateColumns string from the same column definitions
+  // and applying it identically to header and body rows guarantees pixel
+  // alignment regardless of native table-layout quirks.
+  const gridTemplateColumns = table.getAllLeafColumns().map((c) => `${c.getSize()}px`).join(' ');
+
   if (!activeSchemaFile) {
     return (
       <div style={styles.empty}>
@@ -542,32 +554,31 @@ export function TableView() {
         <span style={styles.hint}>Double-click a cell to edit · Enter/Blur to commit · Esc to cancel</span>
       </div>
 
-      {/* Table */}
+      {/* Table (div/grid-based, not a real <table> — see gridTemplateColumns comment above) */}
       <div ref={scrollRef} style={styles.scrollContainer}>
-        <table style={{ ...styles.table, minWidth: table.getTotalSize() }}>
-          <thead style={styles.thead}>
+        <div role="table" style={{ ...styles.table, minWidth: table.getTotalSize() }}>
+          <div role="rowgroup" style={styles.thead}>
             {table.getHeaderGroups().map((hg) => (
-              <tr key={hg.id} style={styles.headerRow}>
+              <div key={hg.id} role="row" style={{ ...styles.headerRow, gridTemplateColumns }}>
                 {hg.headers.map((h) => (
-                  <th
-                    key={h.id}
-                    style={{ ...styles.th, width: h.getSize() }}
-                  >
+                  <div key={h.id} role="columnheader" style={styles.th}>
                     {flexRender(h.column.columnDef.header, h.getContext())}
-                  </th>
+                  </div>
                 ))}
-              </tr>
+              </div>
             ))}
-          </thead>
-          <tbody style={{ height: totalSize, position: 'relative', display: 'block' }}>
+          </div>
+          <div role="rowgroup" style={{ height: totalSize, position: 'relative' }}>
             {virtualItems.map((virtualItem) => {
               const row = allRows[virtualItem.index];
               return (
-                <tr
+                <div
                   key={row.id}
+                  role="row"
                   data-row-index={virtualItem.index}
                   style={{
                     ...styles.row,
+                    gridTemplateColumns,
                     position: 'absolute',
                     top: virtualItem.start,
                     height: ROW_HEIGHT,
@@ -575,18 +586,15 @@ export function TableView() {
                   }}
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <td
-                      key={cell.id}
-                      style={{ ...styles.td, width: cell.column.getSize() }}
-                    >
+                    <div key={cell.id} role="cell" style={styles.td}>
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </td>
+                    </div>
                   ))}
-                </tr>
+                </div>
               );
             })}
-          </tbody>
-        </table>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -594,6 +602,12 @@ export function TableView() {
 
 // ── Styles ─────────────────────────────────────────────────────────────────────
 
+// `td` is a flex container (see styles.td below); every direct cell-content
+// child needs width:100% + minWidth:0, otherwise a flex item's default
+// min-width:auto keeps it at its content's natural size — the same
+// flex-shrink pitfall as OutlineView's row labels (jf.
+// specs/backlog/cross-repo-import-resolution-gaps.md, runde 4) — and
+// whiteSpace:nowrap + textOverflow:ellipsis silently never engages.
 const cellInputStyle: React.CSSProperties = {
   background: 'var(--color-bg-canvas)',
   border: '1px solid var(--color-accent-hover)',
@@ -602,6 +616,7 @@ const cellInputStyle: React.CSSProperties = {
   fontSize: 12,
   padding: '2px 5px',
   width: '100%',
+  minWidth: 0,
   boxSizing: 'border-box',
   outline: 'none',
 };
@@ -614,6 +629,9 @@ const cellDisplayStyle: React.CSSProperties = {
   overflow: 'hidden',
   textOverflow: 'ellipsis',
   userSelect: 'none',
+  width: '100%',
+  minWidth: 0,
+  boxSizing: 'border-box',
 };
 
 const placeholderStyle: React.CSSProperties = {
@@ -628,6 +646,8 @@ const boolCellStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
+  width: '100%',
+  minWidth: 0,
   height: '100%',
 };
 
@@ -683,20 +703,22 @@ const styles: Record<string, React.CSSProperties> = {
     overflow: 'auto',
     position: 'relative',
   },
+  // Div/CSS-Grid "table" — see the gridTemplateColumns comment in TableView()
+  // for why a real <table> can't be virtualized without breaking column
+  // alignment. `table`/`thead` here just group rows visually/for a11y
+  // (role="table"/"rowgroup"); the actual column grid lives on each row.
   table: {
-    borderCollapse: 'collapse',
-    tableLayout: 'fixed',
-    display: 'table',
+    display: 'flex',
+    flexDirection: 'column',
   },
   thead: {
     position: 'sticky',
     top: 0,
     zIndex: 1,
     background: 'var(--color-bg-surface)',
-    display: 'table-header-group',
   },
   headerRow: {
-    display: 'table-row',
+    display: 'grid',
   },
   th: {
     textAlign: 'left',
@@ -708,18 +730,17 @@ const styles: Record<string, React.CSSProperties> = {
     borderRight: '1px solid var(--color-border-default)',
     whiteSpace: 'nowrap',
     overflow: 'hidden',
-    display: 'table-cell',
     boxSizing: 'border-box',
   },
   row: {
-    display: 'table-row',
+    display: 'grid',
     borderBottom: '1px solid var(--color-border-subtle)',
   },
   td: {
     padding: '1px 3px',
-    verticalAlign: 'middle',
+    display: 'flex',
+    alignItems: 'center',
     borderRight: '1px solid var(--color-border-subtle)',
-    display: 'table-cell',
     boxSizing: 'border-box',
     height: ROW_HEIGHT,
     overflow: 'hidden',
