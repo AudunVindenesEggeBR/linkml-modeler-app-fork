@@ -95,7 +95,7 @@ The default host port is **8080**, not 80 — rootless Podman can't bind port 80
 
 If you already have Node/pnpm installed and prefer the old flow, it still works: build with `pnpm --filter @linkml-editor/web build` first, then `up --build` as above — the Dockerfile only rebuilds `packages/web/dist` itself, it doesn't require a pre-built one.
 
-**Redeploying after a code change — `up --build` alone is not enough.** `podman-compose` (confirmed on version 1.5.0) builds a fresh image but does **not** reliably recreate the already-running container against it — the old container keeps running on the old image, silently, so nothing changes in the browser even though the build succeeded. Confirmed to reproduce with `--build` alone and with `--force-recreate` alike (verified via `podman inspect <container> --format '{{.Image}}'` vs. `podman inspect <image>:latest --format '{{.Id}}'` disagreeing after a rebuild). Only a full teardown reliably picks up the new image:
+**Redeploying after a code change — `up --build` alone is not enough.** `podman-compose` (confirmed on version 1.5.0) builds a fresh image but does **not** reliably recreate the already-running container against it — the old container keeps running on the old image, silently, so nothing changes in the browser even though the build succeeded. Confirmed to reproduce with `--build` alone and with `--force-recreate` alike (verified via <code v-pre>podman inspect &lt;container&gt; --format '{{.Image}}'</code> vs. <code v-pre>podman inspect &lt;image&gt;:latest --format '{{.Id}}'</code> disagreeing after a rebuild). Only a full teardown reliably picks up the new image:
 
 ```bash
 podman-compose -f deploy/web/docker-compose.yml down
